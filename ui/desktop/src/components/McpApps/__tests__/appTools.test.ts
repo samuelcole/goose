@@ -1,6 +1,6 @@
 import { AppBridge } from '@mcp-ui/client';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
+import { ErrorCode, McpError, type JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import {
@@ -132,6 +132,27 @@ describe('AppBridge app tools round trip', () => {
         method: 'notifications/cancelled',
         params: expect.objectContaining({ requestId: (call as { id: number }).id }),
       })
+    );
+  });
+
+  it('answers unsupported requests with a JSON-RPC error, not a result', async () => {
+    const bridge = new AppBridge(null, { name: 'h', version: '1' }, {}, { hostContext: {} });
+    (
+      bridge as unknown as { fallbackRequestHandler: (r: { method: string }) => Promise<never> }
+    ).fallbackRequestHandler = async (request) => {
+      throw new McpError(ErrorCode.MethodNotFound, `Method not supported: ${request.method}`);
+    };
+    const [hostSide, appSide] = InMemoryTransport.createLinkedPair();
+    await bridge.connect(hostSide as never);
+    const received: JSONRPCMessage[] = [];
+    appSide.onmessage = (message: JSONRPCMessage) => received.push(message);
+    await appSide.start();
+
+    await appSide.send({ jsonrpc: '2.0', id: 3, method: 'ui/download-file', params: {} });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(received).toContainEqual(
+      expect.objectContaining({ id: 3, error: expect.objectContaining({ code: -32601 }) })
     );
   });
 });

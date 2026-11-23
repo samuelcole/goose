@@ -30,7 +30,13 @@ import type {
   McpUiSizeChangedNotification,
   McpUiUpdateModelContextRequest,
 } from '@modelcontextprotocol/ext-apps/app-bridge';
-import type { CallToolResult, JSONRPCRequest, Tool } from '@modelcontextprotocol/sdk/types.js';
+import {
+  ErrorCode,
+  McpError,
+  type CallToolResult,
+  type JSONRPCRequest,
+  type Tool,
+} from '@modelcontextprotocol/sdk/types.js';
 import { Maximize2, PictureInPicture2, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { v7 as uuidv7 } from 'uuid';
@@ -50,9 +56,9 @@ import FlyingBird from '../FlyingBird';
 import { formatExtensionName } from '../settings/extensions/subcomponents/ExtensionList';
 import { APP_TOOLS_CALL_METHOD, APP_TOOLS_SYNC_METHOD, injectAppToolsShim } from './appToolsShim';
 import { getContainerDimensions } from './containerDimensions';
+import { permissionsPolicyFor } from './permissionsPolicy';
 import {
   GooseDisplayMode,
-  SandboxPermissions,
   McpAppToolCancelled,
   McpAppToolInput,
   McpAppToolInputPartial,
@@ -163,7 +169,7 @@ interface McpAppRendererProps {
 
 interface ResourceMeta {
   csp: McpUiResourceCsp | null;
-  permissions: SandboxPermissions | null;
+  permissions: McpUiResourcePermissions | null;
   prefersBorder: boolean;
 }
 
@@ -208,6 +214,7 @@ const appToolDescriptorsSchema = z
 interface GooseAppFrameProps {
   html: string;
   sandbox: SandboxConfig;
+  resourcePermissions: McpUiResourcePermissions | null;
   hostContext: McpUiHostContext;
   toolInput?: Record<string, unknown>;
   toolInputPartial?: Record<string, unknown>;
@@ -259,6 +266,7 @@ function iframeHeightFor(guestHeight: number, hostContext: McpUiHostContext): nu
 function GooseAppFrame({
   html,
   sandbox,
+  resourcePermissions,
   hostContext,
   toolInput,
   toolInputPartial,
@@ -275,6 +283,7 @@ function GooseAppFrame({
   onSizeChanged,
   onError,
 }: GooseAppFrameProps) {
+  const allowAttribute = permissionsPolicyFor(resourcePermissions);
   const containerRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const guestHeightRef = useRef<number | null>(null);
@@ -347,6 +356,9 @@ function GooseAppFrame({
     iframe.style.border = 'none';
     iframe.style.backgroundColor = 'transparent';
     iframe.setAttribute('sandbox', sandbox.permissions || DEFAULT_SANDBOX_PERMISSIONS);
+    if (allowAttribute) {
+      iframe.setAttribute('allow', allowAttribute);
+    }
 
     let active = true;
     let settled = false;
@@ -426,7 +438,7 @@ function GooseAppFrame({
       bridge.close();
       iframe.remove();
     };
-  }, [sandbox.permissions, sandbox.url.href]);
+  }, [sandbox.permissions, sandbox.url.href, allowAttribute]);
 
   // Each send loads a new guest document, so app tools are scoped to this effect:
   // they are withdrawn when the document is replaced or the frame unmounts.
@@ -460,14 +472,20 @@ function GooseAppFrame({
       }
     };
     void Promise.resolve(
-      bridge.sendSandboxResourceReady({ html: injectAppToolsShim(html), csp: sandbox.csp })
+      // The bundled AppBridge's type predates `permissions`; the proxy reads it
+      // to set the guest iframe's allow list.
+      bridge.sendSandboxResourceReady({
+        html: injectAppToolsShim(html),
+        csp: sandbox.csp,
+        ...(resourcePermissions ? { permissions: resourcePermissions } : {}),
+      } as Parameters<AppBridge['sendSandboxResourceReady']>[0])
     ).catch((error: unknown) => {
       onErrorRef.current(error instanceof Error ? error : new Error(String(error)));
     });
     return () => {
       onAppToolsChangedRef.current(documentId, [], null);
     };
-  }, [connected, html, sandbox.csp]);
+  }, [connected, html, sandbox.csp, resourcePermissions]);
 
   useEffect(() => {
     const bridge = bridgeRef.current;
@@ -750,9 +768,7 @@ export default function McpAppRenderer({
             const resolvedHtml = content.text ?? cachedHtml ?? null;
             const resolvedMeta = {
               csp: rawMeta?.ui?.csp || null,
-              // todo: pass permissions to SDK once it supports sendSandboxResourceReady
-              // https://github.com/MCP-UI-Org/mcp-ui/issues/180
-              permissions: null,
+              permissions: rawMeta?.ui?.permissions ?? null,
               prefersBorder: rawMeta?.ui?.prefersBorder ?? true,
             };
 
@@ -919,8 +935,22 @@ export default function McpAppRenderer({
   );
 
   const handleLoggingMessage = useCallback(
-    (_notification: { level?: string; logger?: string; data?: unknown }) => {},
-    []
+    ({ level, logger, data }: { level?: string; logger?: string; data?: unknown }) => {
+      const label = `[MCP App ${extensionName}${logger ? `/${logger}` : ''}]`;
+      switch (level) {
+        case 'debug':
+        case 'info':
+        case 'notice':
+          console.debug(label, data);
+          break;
+        case 'warning':
+          console.warn(label, data);
+          break;
+        default:
+          console.error(label, data);
+      }
+    },
+    [extensionName]
   );
 
   // Track when we *return* to inline from fullscreen/pip so we can briefly
@@ -976,11 +1006,11 @@ export default function McpAppRenderer({
   }, []);
 
   const handleFallbackRequest = useCallback(
-    async (request: JSONRPCRequest, _extra: RequestHandlerExtra) => {
-      return {
-        status: 'error' as const,
-        message: `Unhandled JSON-RPC method: ${request.method ?? '<unknown>'}`,
-      };
+    async (request: JSONRPCRequest, _extra: RequestHandlerExtra): Promise<never> => {
+      throw new McpError(
+        ErrorCode.MethodNotFound,
+        `Method not supported by this host: ${request.method ?? '<unknown>'}`
+      );
     },
     []
   );
@@ -1009,10 +1039,10 @@ export default function McpAppRenderer({
     if (!readySandboxUrl) return null;
     return {
       url: readySandboxUrl,
-      permissions: meta.permissions || DEFAULT_SANDBOX_PERMISSIONS,
+      permissions: DEFAULT_SANDBOX_PERMISSIONS,
       csp: mcpUiCsp,
     };
-  }, [readySandboxUrl, meta.permissions, mcpUiCsp]);
+  }, [readySandboxUrl, mcpUiCsp]);
 
   const hostContext = useMemo((): McpUiHostContext => {
     const context: McpUiHostContext = {
@@ -1092,6 +1122,7 @@ export default function McpAppRenderer({
     return (
       <GooseAppFrame
         sandbox={sandboxConfig}
+        resourcePermissions={meta.permissions}
         html={html ?? ''}
         hostContext={hostContext}
         toolInput={toolInput?.arguments}

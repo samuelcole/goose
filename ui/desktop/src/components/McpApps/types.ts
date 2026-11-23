@@ -5,12 +5,6 @@ import type {
   McpUiDisplayMode,
 } from '@modelcontextprotocol/ext-apps/app-bridge';
 
-/**
- * Space-separated sandbox tokens for iframe permissions.
- * @see https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe#sandbox
- */
-export type SandboxPermissions = string;
-
 export type GooseDisplayMode = McpUiDisplayMode | 'standalone';
 
 /**
