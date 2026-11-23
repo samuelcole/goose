@@ -5,6 +5,11 @@ import type {
 } from '@aaif/goose-acp-client';
 import type { Message } from '../types/message';
 import { getAcpClient } from './acpConnection';
+import { takePendingMcpAppModelContext } from './mcpAppModelContext';
+
+function promptWithAppContext(sessionId: string, message: Message): ContentBlock[] {
+  return [...takePendingMcpAppModelContext(sessionId), ...messageToAcpPromptContent(message)];
+}
 
 export async function acpPromptSession(
   sessionId: string,
@@ -13,7 +18,7 @@ export async function acpPromptSession(
   const client = await getAcpClient();
   return client.connection.agent.request(methods.agent.session.prompt, {
     sessionId,
-    prompt: messageToAcpPromptContent(message),
+    prompt: promptWithAppContext(sessionId, message),
   });
 }
 
@@ -31,7 +36,10 @@ export async function acpSteerSession(
   return client.goose.sessionSteer_unstable({
     sessionId,
     expectedRunId,
-    prompt: messageToAcpPromptContent(message) as unknown as SteerSessionRequest_unstable['prompt'],
+    prompt: promptWithAppContext(
+      sessionId,
+      message
+    ) as unknown as SteerSessionRequest_unstable['prompt'],
   });
 }
 

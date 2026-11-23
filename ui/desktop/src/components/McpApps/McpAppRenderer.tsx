@@ -28,11 +28,14 @@ import type {
   McpUiResourceCsp,
   McpUiResourcePermissions,
   McpUiSizeChangedNotification,
+  McpUiUpdateModelContextRequest,
 } from '@modelcontextprotocol/ext-apps/app-bridge';
 import type { CallToolResult, JSONRPCRequest, Tool } from '@modelcontextprotocol/sdk/types.js';
 import { Maximize2, PictureInPicture2, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { v7 as uuidv7 } from 'uuid';
 import { callMcpAppTool, readMcpAppResource } from '../../acp/mcp-apps';
+import { setMcpAppModelContext } from '../../acp/mcpAppModelContext';
 import { httpBaseFromAcpWebSocketUrl, isLoopbackAcpWebSocketUrl } from '../../acp/url';
 import { getCachedTools } from './toolsCache';
 import { AppEvents } from '../../constants/events';
@@ -191,6 +194,7 @@ interface GooseAppFrameProps {
     contents: Array<{ uri: string; text: string; mimeType?: string }>;
   }>;
   onLoggingMessage: (params: { level?: string; logger?: string; data?: unknown }) => void;
+  onUpdateModelContext: (params: McpUiUpdateModelContextRequest['params']) => void;
   onFallbackRequest: (
     request: JSONRPCRequest,
     extra: RequestHandlerExtra
@@ -200,6 +204,8 @@ interface GooseAppFrameProps {
 }
 
 const SANDBOX_PROXY_READY_METHOD = 'ui/notifications/sandbox-proxy-ready';
+const UPDATE_MODEL_CONTEXT_METHOD: McpUiUpdateModelContextRequest['method'] =
+  'ui/update-model-context';
 
 // In PiP the iframe must fill the window even when the guest's content is
 // shorter, otherwise the window's own background shows below the app.
@@ -224,6 +230,7 @@ function GooseAppFrame({
   onCallTool,
   onReadResource,
   onLoggingMessage,
+  onUpdateModelContext,
   onFallbackRequest,
   onSizeChanged,
   onError,
@@ -240,6 +247,7 @@ function GooseAppFrame({
   const onCallToolRef = useRef(onCallTool);
   const onReadResourceRef = useRef(onReadResource);
   const onLoggingMessageRef = useRef(onLoggingMessage);
+  const onUpdateModelContextRef = useRef(onUpdateModelContext);
   const onFallbackRequestRef = useRef(onFallbackRequest);
   const onSizeChangedRef = useRef(onSizeChanged);
   const onErrorRef = useRef(onError);
@@ -251,6 +259,7 @@ function GooseAppFrame({
     onCallToolRef.current = onCallTool;
     onReadResourceRef.current = onReadResource;
     onLoggingMessageRef.current = onLoggingMessage;
+    onUpdateModelContextRef.current = onUpdateModelContext;
     onFallbackRequestRef.current = onFallbackRequest;
     onSizeChangedRef.current = onSizeChanged;
     onErrorRef.current = onError;
@@ -269,6 +278,7 @@ function GooseAppFrame({
       serverResources: {},
       logging: {},
       message: { text: {} },
+      updateModelContext: { text: {}, structuredContent: {} },
     };
     const bridge = new AppBridge(null, { name: 'MCP-UI Host', version: '1.0.0' }, capabilities, {
       hostContext: hostContextRef.current,
@@ -278,8 +288,16 @@ function GooseAppFrame({
     bridge.onloggingmessage = (params) => onLoggingMessageRef.current(params);
     bridge.oncalltool = (params) => onCallToolRef.current(params);
     bridge.onreadresource = (params) => onReadResourceRef.current(params);
-    (bridge as FallbackRequestHandler).fallbackRequestHandler = (request, extra) =>
-      onFallbackRequestRef.current(request, extra);
+    // The AppBridge bundled with @mcp-ui/client predates ui/update-model-context.
+    (bridge as FallbackRequestHandler).fallbackRequestHandler = async (request, extra) => {
+      if (request.method === UPDATE_MODEL_CONTEXT_METHOD) {
+        onUpdateModelContextRef.current(
+          (request.params ?? {}) as McpUiUpdateModelContextRequest['params']
+        );
+        return {};
+      }
+      return onFallbackRequestRef.current(request, extra);
+    };
 
     const iframe = document.createElement('iframe');
     iframe.style.width = '100%';
@@ -795,6 +813,22 @@ export default function McpAppRenderer({
     [sessionId, extensionName]
   );
 
+  const appInstanceIdRef = useRef<string>(uuidv7());
+  const handleUpdateModelContext = useCallback(
+    (params: McpUiUpdateModelContextRequest['params']) => {
+      if (!sessionId) {
+        throw new Error('Session not initialized for MCP request');
+      }
+      setMcpAppModelContext(
+        sessionId,
+        appInstanceIdRef.current,
+        { extensionName, resourceUri },
+        params
+      );
+    },
+    [sessionId, extensionName, resourceUri]
+  );
+
   const handleLoggingMessage = useCallback(
     (_notification: { level?: string; logger?: string; data?: unknown }) => {},
     []
@@ -980,6 +1014,7 @@ export default function McpAppRenderer({
         onCallTool={handleCallTool}
         onReadResource={handleReadResource}
         onLoggingMessage={handleLoggingMessage}
+        onUpdateModelContext={handleUpdateModelContext}
         onFallbackRequest={handleFallbackRequest}
         onSizeChanged={handleSizeChanged}
         onError={handleError}
