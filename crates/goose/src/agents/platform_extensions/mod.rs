@@ -1,3 +1,4 @@
+pub mod app_tools;
 mod registry;
 pub(crate) use registry::is_platform;
 pub use registry::PlatformExtensions;
@@ -184,6 +185,19 @@ pub static PLATFORM_EXTENSIONS: Lazy<HashMap<&'static str, PlatformExtensionDef>
                 unprefixed_tools: true,
                 hidden: false,
                 client_factory: |_| Some(Box::new(developer::DeveloperClient::new().unwrap())),
+            },
+        );
+
+        map.insert(
+            app_tools::EXTENSION_NAME,
+            PlatformExtensionDef {
+                name: app_tools::EXTENSION_NAME,
+                display_name: "App Tools",
+                description: "Tools registered by MCP App UIs open in the chat",
+                default_enabled: true,
+                unprefixed_tools: false,
+                hidden: false,
+                client_factory: |ctx| Some(Box::new(app_tools::AppToolsClient::new(ctx).unwrap())),
             },
         );
 

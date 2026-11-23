@@ -8,7 +8,8 @@
 //! it, then add one line to [`agent_request_schemas`].
 
 use goose_acp_types::custom_requests::{
-    RecipeParamsResponse, RequestRecipeParams, REQUEST_RECIPE_PARAMS_METHOD,
+    AppToolCallResponse, RecipeParamsResponse, RequestAppToolCall, RequestRecipeParams,
+    REQUEST_APP_TOOL_CALL_METHOD, REQUEST_RECIPE_PARAMS_METHOD,
 };
 use schemars::{JsonSchema, SchemaGenerator};
 
@@ -41,8 +42,14 @@ where
 /// Schemas for every goose-custom agent → client request. Collected by the ACP
 /// schema generator binary.
 pub fn agent_request_schemas(generator: &mut SchemaGenerator) -> Vec<CustomMethodSchema> {
-    vec![agent_request_schema::<
-        RequestRecipeParams,
-        RecipeParamsResponse,
-    >(generator, REQUEST_RECIPE_PARAMS_METHOD)]
+    vec![
+        agent_request_schema::<RequestRecipeParams, RecipeParamsResponse>(
+            generator,
+            REQUEST_RECIPE_PARAMS_METHOD,
+        ),
+        agent_request_schema::<RequestAppToolCall, AppToolCallResponse>(
+            generator,
+            REQUEST_APP_TOOL_CALL_METHOD,
+        ),
+    ]
 }

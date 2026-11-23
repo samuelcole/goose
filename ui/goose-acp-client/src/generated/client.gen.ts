@@ -180,6 +180,7 @@ import type {
   SetToolPermissionsResponse_unstable,
   SteerSessionRequest_unstable,
   SteerSessionResponse_unstable,
+  SyncAppToolsRequest_unstable,
   TruncateSessionConversationRequest_unstable,
   UnarchiveSessionRequest_unstable,
   UnpauseScheduleRequest_unstable,
@@ -401,6 +402,12 @@ export class GooseExtClient {
     return zLiveVoiceAvailabilityResponse_unstable.parse(
       raw,
     ) as LiveVoiceAvailabilityResponse_unstable;
+  }
+
+  async sessionAppToolsSync_unstable(
+    params: SyncAppToolsRequest_unstable,
+  ): Promise<void> {
+    await this.conn.request("_goose/unstable/session/app-tools/sync", params);
   }
 
   async sessionLiveVoiceStart_unstable(

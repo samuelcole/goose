@@ -34,6 +34,9 @@ import type { CallToolResult, JSONRPCRequest, Tool } from '@modelcontextprotocol
 import { Maximize2, PictureInPicture2, X } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { v7 as uuidv7 } from 'uuid';
+import type { AppToolDescriptor } from '@aaif/goose-acp-client';
+import { z } from 'zod';
+import { registerAppToolHandler, syncAppTools, type AppToolHandler } from '../../acp/appTools';
 import { callMcpAppTool, readMcpAppResource } from '../../acp/mcp-apps';
 import { setMcpAppModelContext } from '../../acp/mcpAppModelContext';
 import { httpBaseFromAcpWebSocketUrl, isLoopbackAcpWebSocketUrl } from '../../acp/url';
@@ -45,6 +48,7 @@ import { errorMessage } from '../../utils/conversionUtils';
 import { defineMessages, useIntl } from '../../i18n';
 import FlyingBird from '../FlyingBird';
 import { formatExtensionName } from '../settings/extensions/subcomponents/ExtensionList';
+import { APP_TOOLS_CALL_METHOD, APP_TOOLS_SYNC_METHOD, injectAppToolsShim } from './appToolsShim';
 import { getContainerDimensions } from './containerDimensions';
 import {
   GooseDisplayMode,
@@ -170,7 +174,35 @@ type FallbackRequestHandler = {
     request: JSONRPCRequest,
     extra: RequestHandlerExtra
   ) => Promise<Record<string, unknown>>;
+  fallbackNotificationHandler?: (notification: {
+    method: string;
+    params?: Record<string, unknown>;
+  }) => Promise<void>;
 };
+
+// AppBridge's request() is typed to the spec's host-to-app methods only.
+type UntypedBridgeRequest = {
+  request: <T extends z.ZodType>(
+    request: { method: string; params?: Record<string, unknown> },
+    resultSchema: T
+  ) => Promise<z.infer<T>>;
+};
+
+const appToolCallResultSchema = z.object({
+  text: z.string().default(''),
+  structuredContent: z.record(z.string(), z.unknown()).optional(),
+  isError: z.boolean().default(false),
+});
+
+const appToolDescriptorsSchema = z
+  .array(
+    z.object({
+      name: z.string(),
+      description: z.string(),
+      inputSchema: z.record(z.string(), z.unknown()).optional(),
+    })
+  )
+  .catch([]);
 
 interface GooseAppFrameProps {
   html: string;
@@ -195,6 +227,12 @@ interface GooseAppFrameProps {
   }>;
   onLoggingMessage: (params: { level?: string; logger?: string; data?: unknown }) => void;
   onUpdateModelContext: (params: McpUiUpdateModelContextRequest['params']) => void;
+  // Called per loaded fragment document; an empty list withdraws its tools.
+  onAppToolsChanged: (
+    documentId: string,
+    tools: AppToolDescriptor[],
+    callTool: AppToolHandler | null
+  ) => void;
   onFallbackRequest: (
     request: JSONRPCRequest,
     extra: RequestHandlerExtra
@@ -231,6 +269,7 @@ function GooseAppFrame({
   onReadResource,
   onLoggingMessage,
   onUpdateModelContext,
+  onAppToolsChanged,
   onFallbackRequest,
   onSizeChanged,
   onError,
@@ -248,6 +287,7 @@ function GooseAppFrame({
   const onReadResourceRef = useRef(onReadResource);
   const onLoggingMessageRef = useRef(onLoggingMessage);
   const onUpdateModelContextRef = useRef(onUpdateModelContext);
+  const onAppToolsChangedRef = useRef(onAppToolsChanged);
   const onFallbackRequestRef = useRef(onFallbackRequest);
   const onSizeChangedRef = useRef(onSizeChanged);
   const onErrorRef = useRef(onError);
@@ -260,6 +300,7 @@ function GooseAppFrame({
     onReadResourceRef.current = onReadResource;
     onLoggingMessageRef.current = onLoggingMessage;
     onUpdateModelContextRef.current = onUpdateModelContext;
+    onAppToolsChangedRef.current = onAppToolsChanged;
     onFallbackRequestRef.current = onFallbackRequest;
     onSizeChangedRef.current = onSizeChanged;
     onErrorRef.current = onError;
@@ -386,14 +427,31 @@ function GooseAppFrame({
     };
   }, [sandbox.permissions, sandbox.url.href]);
 
+  // Each send loads a new guest document, so app tools are scoped to this effect:
+  // they are withdrawn when the document is replaced or the frame unmounts.
   useEffect(() => {
     const bridge = bridgeRef.current;
     if (!connected || !bridge) return;
-    void Promise.resolve(bridge.sendSandboxResourceReady({ html, csp: sandbox.csp })).catch(
-      (error: unknown) => {
-        onErrorRef.current(error instanceof Error ? error : new Error(String(error)));
+    const documentId = uuidv7();
+    const callTool: AppToolHandler = (name, args) =>
+      (bridge as unknown as UntypedBridgeRequest).request(
+        { method: APP_TOOLS_CALL_METHOD, params: { name, arguments: args } },
+        appToolCallResultSchema
+      );
+    (bridge as FallbackRequestHandler).fallbackNotificationHandler = async (notification) => {
+      if (notification.method === APP_TOOLS_SYNC_METHOD) {
+        const tools = appToolDescriptorsSchema.parse(notification.params?.tools);
+        onAppToolsChangedRef.current(documentId, tools, tools.length > 0 ? callTool : null);
       }
-    );
+    };
+    void Promise.resolve(
+      bridge.sendSandboxResourceReady({ html: injectAppToolsShim(html), csp: sandbox.csp })
+    ).catch((error: unknown) => {
+      onErrorRef.current(error instanceof Error ? error : new Error(String(error)));
+    });
+    return () => {
+      onAppToolsChangedRef.current(documentId, [], null);
+    };
   }, [connected, html, sandbox.csp]);
 
   useEffect(() => {
@@ -829,6 +887,22 @@ export default function McpAppRenderer({
     [sessionId, extensionName, resourceUri]
   );
 
+  const appToolUnregistersRef = useRef(new Map<string, () => void>());
+  const handleAppToolsChanged = useCallback(
+    (documentId: string, tools: AppToolDescriptor[], callTool: AppToolHandler | null) => {
+      if (!sessionId) return;
+      appToolUnregistersRef.current.get(documentId)?.();
+      appToolUnregistersRef.current.delete(documentId);
+      if (callTool && tools.length > 0) {
+        appToolUnregistersRef.current.set(documentId, registerAppToolHandler(documentId, callTool));
+      }
+      syncAppTools(sessionId, documentId, extensionName, tools).catch((error: unknown) => {
+        console.error('[McpAppRenderer] Failed to sync app tools:', error);
+      });
+    },
+    [sessionId, extensionName]
+  );
+
   const handleLoggingMessage = useCallback(
     (_notification: { level?: string; logger?: string; data?: unknown }) => {},
     []
@@ -1015,6 +1089,7 @@ export default function McpAppRenderer({
         onReadResource={handleReadResource}
         onLoggingMessage={handleLoggingMessage}
         onUpdateModelContext={handleUpdateModelContext}
+        onAppToolsChanged={handleAppToolsChanged}
         onFallbackRequest={handleFallbackRequest}
         onSizeChanged={handleSizeChanged}
         onError={handleError}

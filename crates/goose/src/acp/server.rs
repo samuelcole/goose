@@ -99,6 +99,7 @@ use self::tool_calls::enrichment::{spawn_chain_summary_enrichment, spawn_tool_ti
 mod agent_requests;
 pub use agent_requests::agent_request_schemas;
 mod agent_mentions;
+mod app_tools;
 use crate::agents::{ActiveRunRegistry, StartRunError};
 mod apps;
 mod config;

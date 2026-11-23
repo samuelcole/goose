@@ -71,6 +71,11 @@
       "responseType": "LiveVoiceAvailabilityResponse_unstable"
     },
     {
+      "method": "_goose/unstable/session/app-tools/sync",
+      "requestType": "SyncAppToolsRequest_unstable",
+      "responseType": "EmptyResponse"
+    },
+    {
       "method": "_goose/unstable/session/live-voice/start",
       "requestType": "LiveVoiceStartRequest_unstable",
       "responseType": "LiveVoiceStartResponse_unstable"
@@ -571,6 +576,11 @@
       "method": "_goose/unstable/session/recipe/request-params",
       "requestType": "RequestRecipeParams_unstable",
       "responseType": "RecipeParamsResponse_unstable"
+    },
+    {
+      "method": "_goose/unstable/session/app-tools/call",
+      "requestType": "RequestAppToolCall_unstable",
+      "responseType": "AppToolCallResponse_unstable"
     }
   ]
 }

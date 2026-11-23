@@ -439,6 +439,26 @@ export const zLiveVoiceAvailabilityResponse_unstable = z.object({
 });
 
 /**
+ * A tool an MCP App fragment registered with WebMCP's `registerTool`.
+ */
+export const zAppToolDescriptor = z.object({
+    name: z.string(),
+    description: z.string(),
+    inputSchema: z.record(z.string(), z.unknown()).nullish()
+});
+
+/**
+ * Replace the tools one MCP App fragment offers the agent. An empty list
+ * withdraws them, e.g. when the fragment's document goes away.
+ */
+export const zSyncAppToolsRequest_unstable = z.object({
+    sessionId: z.string(),
+    appInstanceId: z.string(),
+    extensionName: z.string(),
+    tools: z.array(zAppToolDescriptor).optional().default([])
+});
+
+/**
  * Start a live voice interaction for a session.
  */
 export const zLiveVoiceStartRequest_unstable = z.object({
@@ -2356,6 +2376,22 @@ export const zRecipeParamsResponse_unstable = z.object({
     values: z.record(z.string(), z.string()).optional().default({})
 });
 
+/**
+ * Ask the client to run a tool inside the fragment that registered it.
+ */
+export const zRequestAppToolCall_unstable = z.object({
+    sessionId: z.string(),
+    appInstanceId: z.string(),
+    name: z.string(),
+    arguments: z.record(z.string(), z.unknown()).nullish()
+});
+
+export const zAppToolCallResponse_unstable = z.object({
+    text: z.string().optional().default(''),
+    structuredContent: z.record(z.string(), z.unknown()).nullish(),
+    isError: z.boolean().optional().default(false)
+});
+
 export const zExtRequest = z.object({
     id: z.string(),
     method: z.string(),
@@ -2375,6 +2411,7 @@ export const zExtRequest = z.object({
             zSetSessionSystemPromptRequest_unstable,
             zSteerSessionRequest_unstable,
             zLiveVoiceAvailabilityRequest_unstable,
+            zSyncAppToolsRequest_unstable,
             zLiveVoiceStartRequest_unstable,
             zLiveVoiceStopRequest_unstable,
             zDiagnosticsGetRequest_unstable,
@@ -2588,7 +2625,10 @@ export const zExtAgentRequest = z.object({
     id: z.string(),
     method: z.string(),
     params: z.union([
-        zRequestRecipeParams_unstable,
+        z.union([
+            zRequestRecipeParams_unstable,
+            zRequestAppToolCall_unstable
+        ]),
         z.record(z.string(), z.unknown())
     ]).nullish()
 });
@@ -2597,7 +2637,10 @@ export const zExtAgentResponse = z.union([
     z.object({
         id: z.string(),
         result: z.union([
-            zRecipeParamsResponse_unstable,
+            z.union([
+                zRecipeParamsResponse_unstable,
+                zAppToolCallResponse_unstable
+            ]),
             z.unknown()
         ]).optional()
     }),

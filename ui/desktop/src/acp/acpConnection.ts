@@ -18,6 +18,7 @@ import {
   type GooseAcpCallbacks,
   type GooseAcpClient,
 } from './gooseAcpClient';
+import { callAppTool } from './appTools';
 import { requestAcpPermission } from './permissionRequests';
 import { requestAcpRecipeParams } from './recipeParamRequests';
 
@@ -221,6 +222,7 @@ function createClientCallbacks(): GooseAcpCallbacks {
     requestPermission: requestAcpPermission,
     createElicitation: requestAcpElicitation,
     unstable_sessionRecipeRequestParams: requestAcpRecipeParams,
+    unstable_sessionAppToolsCall: callAppTool,
     sessionUpdate: handleAcpSessionNotification,
     unstable_sessionUpdate: handleAcpGooseSessionNotification,
     unstable_providerDeviceCode: handleAcpProviderDeviceCodeNotification,

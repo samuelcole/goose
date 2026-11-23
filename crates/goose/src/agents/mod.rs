@@ -1,4 +1,5 @@
 mod active_run;
+pub mod app_tools;
 pub mod context_report;
 pub mod execute_commands;
 pub mod extension;
