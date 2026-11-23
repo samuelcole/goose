@@ -1,5 +1,6 @@
 pub mod app_tools;
 mod registry;
+pub mod web_pane;
 pub(crate) use registry::is_platform;
 pub use registry::PlatformExtensions;
 #[cfg(feature = "tree-sitter")]
@@ -198,6 +199,19 @@ pub static PLATFORM_EXTENSIONS: Lazy<HashMap<&'static str, PlatformExtensionDef>
                 unprefixed_tools: false,
                 hidden: false,
                 client_factory: |ctx| Some(Box::new(app_tools::AppToolsClient::new(ctx).unwrap())),
+            },
+        );
+
+        map.insert(
+            web_pane::EXTENSION_NAME,
+            PlatformExtensionDef {
+                name: web_pane::EXTENSION_NAME,
+                display_name: "Web Pane",
+                description: "Open web pages in a pane beside the chat",
+                default_enabled: true,
+                unprefixed_tools: false,
+                hidden: false,
+                client_factory: |ctx| Some(Box::new(web_pane::WebPaneClient::new(ctx).unwrap())),
             },
         );
 

@@ -31,6 +31,7 @@ pub mod tool_execution;
 pub mod tool_snapshot;
 pub mod types;
 pub mod validate_extensions;
+pub mod web_pane;
 
 pub use active_run::ActiveRunRegistry;
 pub(crate) use active_run::StartRunError;

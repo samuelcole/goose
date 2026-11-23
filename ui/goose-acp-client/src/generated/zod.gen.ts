@@ -439,6 +439,14 @@ export const zLiveVoiceAvailabilityResponse_unstable = z.object({
 });
 
 /**
+ * Tell the agent this client can show a web pane beside the given chat, so the
+ * agent is offered tools to open pages there.
+ */
+export const zRegisterWebPaneRequest_unstable = z.object({
+    sessionId: z.string()
+});
+
+/**
  * A tool an MCP App fragment registered with WebMCP's `registerTool`.
  */
 export const zAppToolDescriptor = z.object({
@@ -2403,6 +2411,26 @@ export const zAppToolCallResponse_unstable = z.object({
     isError: z.boolean().optional().default(false)
 });
 
+/**
+ * Ask the client to load a URL into the chat's web pane, opening it if needed.
+ */
+export const zRequestWebPaneOpen_unstable = z.object({
+    sessionId: z.string(),
+    url: z.string()
+});
+
+export const zWebPaneOpenResponse_unstable = z.object({
+    url: z.string(),
+    title: z.string().optional().default('')
+});
+
+/**
+ * Ask the client to close the chat's web pane.
+ */
+export const zRequestWebPaneClose_unstable = z.object({
+    sessionId: z.string()
+});
+
 export const zExtRequest = z.object({
     id: z.string(),
     method: z.string(),
@@ -2422,6 +2450,7 @@ export const zExtRequest = z.object({
             zSetSessionSystemPromptRequest_unstable,
             zSteerSessionRequest_unstable,
             zLiveVoiceAvailabilityRequest_unstable,
+            zRegisterWebPaneRequest_unstable,
             zSyncAppToolsRequest_unstable,
             zLiveVoiceStartRequest_unstable,
             zLiveVoiceStopRequest_unstable,
@@ -2639,7 +2668,9 @@ export const zExtAgentRequest = z.object({
     params: z.union([
         z.union([
             zRequestRecipeParams_unstable,
-            zRequestAppToolCall_unstable
+            zRequestAppToolCall_unstable,
+            zRequestWebPaneOpen_unstable,
+            zRequestWebPaneClose_unstable
         ]),
         z.record(z.string(), z.unknown())
     ]).nullish()
@@ -2651,7 +2682,9 @@ export const zExtAgentResponse = z.union([
         result: z.union([
             z.union([
                 zRecipeParamsResponse_unstable,
-                zAppToolCallResponse_unstable
+                zAppToolCallResponse_unstable,
+                zWebPaneOpenResponse_unstable,
+                zEmptyResponse
             ]),
             z.unknown()
         ]).optional()

@@ -1,6 +1,7 @@
 import Electron, { contextBridge, ipcRenderer, webUtils } from 'electron';
 import { Recipe } from './recipe';
 import type { GooseApp } from './types/apps';
+import type { WebPaneBounds, WebPaneEvent, WebPaneToolResult } from './webPaneMain';
 import type { Settings, SettingKey } from './utils/settings';
 import { defaultSettings } from './utils/settings';
 import type { OpenExternalUrlResult } from './utils/urlSecurity';
@@ -159,6 +160,21 @@ type ElectronAPI = {
     tokensUpdated?: boolean;
   }) => void;
   openExternal: (url: string) => Promise<OpenExternalUrlResult>;
+  webPane: {
+    open: (sessionId: string, url: string) => Promise<{ url: string; title: string }>;
+    close: (sessionId: string) => Promise<void>;
+    setBounds: (sessionId: string, bounds: WebPaneBounds | null) => Promise<void>;
+    navigate: (sessionId: string, action: 'back' | 'forward' | 'reload') => Promise<void>;
+    callTool: (
+      sessionId: string,
+      documentId: string,
+      callId: string,
+      name: string,
+      args: Record<string, unknown>
+    ) => Promise<WebPaneToolResult>;
+    cancelTool: (sessionId: string, callId: string) => Promise<void>;
+    onEvent: (callback: (event: WebPaneEvent) => void) => () => void;
+  };
   // Update-related functions
   getVersion: () => string;
   checkForUpdates: () => Promise<{ updateInfo: unknown; error: string | null }>;
@@ -301,6 +317,23 @@ const electronAPI: ElectronAPI = {
   },
   openExternal: (url: string): Promise<OpenExternalUrlResult> => {
     return ipcRenderer.invoke('open-external', url);
+  },
+  webPane: {
+    open: (sessionId, url) => ipcRenderer.invoke('web-pane:open', sessionId, url),
+    close: (sessionId) => ipcRenderer.invoke('web-pane:close', sessionId),
+    setBounds: (sessionId, bounds) => ipcRenderer.invoke('web-pane:set-bounds', sessionId, bounds),
+    navigate: (sessionId, action) => ipcRenderer.invoke('web-pane:navigate', sessionId, action),
+    callTool: (sessionId, documentId, callId, name, args) =>
+      ipcRenderer.invoke('web-pane:call-tool', sessionId, documentId, callId, name, args),
+    cancelTool: (sessionId, callId) =>
+      ipcRenderer.invoke('web-pane:cancel-tool', sessionId, callId),
+    onEvent: (callback) => {
+      const listener = (_event: Electron.IpcRendererEvent, data: WebPaneEvent) => callback(data);
+      ipcRenderer.on('web-pane:event', listener);
+      return () => {
+        ipcRenderer.removeListener('web-pane:event', listener);
+      };
+    },
   },
   getVersion: (): string => {
     return config.GOOSE_VERSION || ipcRenderer.sendSync('get-app-version') || '';

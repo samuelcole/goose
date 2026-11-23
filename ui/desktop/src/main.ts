@@ -65,6 +65,7 @@ import {
   isAuthorizedFileAccessRequest,
   readSelectedRecipe,
 } from './desktopFileAccess';
+import { registerWebPaneIpc } from './webPaneMain';
 import { getWindowIconFilename } from './utils/windowIcon';
 
 const windowIconPath = path.join(__dirname, '../images', getWindowIconFilename(process.platform));
@@ -1889,6 +1890,8 @@ ipcMain.on('react-ready', (event) => {
     }
   }
 });
+
+registerWebPaneIpc();
 
 ipcMain.handle('open-external', async (event, url: string) => {
   const senderWindow = BrowserWindow.fromWebContents(event.sender) ?? undefined;

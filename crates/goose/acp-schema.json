@@ -414,7 +414,7 @@
     "EmptyResponse": {
       "type": "object",
       "description": "Empty success response for operations that return no data.",
-      "x-side": "agent"
+      "x-side": "client"
     },
     "RemoveSessionExtensionRequest_unstable": {
       "type": "object",
@@ -1343,6 +1343,20 @@
         "ready",
         "unavailable"
       ]
+    },
+    "RegisterWebPaneRequest_unstable": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "description": "Tell the agent this client can show a web pane beside the given chat, so the\nagent is offered tools to open pages there.",
+      "x-side": "agent",
+      "x-method": "_goose/unstable/session/web-pane/register"
     },
     "SyncAppToolsRequest_unstable": {
       "type": "object",
@@ -7354,6 +7368,56 @@
       "x-side": "client",
       "x-method": "_goose/unstable/session/app-tools/call"
     },
+    "RequestWebPaneOpen_unstable": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId",
+        "url"
+      ],
+      "description": "Ask the client to load a URL into the chat's web pane, opening it if needed.",
+      "x-side": "client",
+      "x-method": "_goose/unstable/session/web-pane/open"
+    },
+    "WebPaneOpenResponse_unstable": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "description": "Where the pane ended up after redirects."
+        },
+        "title": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "x-side": "client",
+      "x-method": "_goose/unstable/session/web-pane/open"
+    },
+    "RequestWebPaneClose_unstable": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "description": "Ask the client to close the chat's web pane.",
+      "x-side": "client",
+      "x-method": "_goose/unstable/session/web-pane/close"
+    },
     "ExtRequest": {
       "properties": {
         "id": {
@@ -7491,6 +7555,15 @@
                   ],
                   "description": "Params for _goose/unstable/session/live-voice/availability",
                   "title": "LiveVoiceAvailabilityRequest_unstable"
+                },
+                {
+                  "allOf": [
+                    {
+                      "$ref": "#/$defs/RegisterWebPaneRequest_unstable"
+                    }
+                  ],
+                  "description": "Params for _goose/unstable/session/web-pane/register",
+                  "title": "RegisterWebPaneRequest_unstable"
                 },
                 {
                   "allOf": [
@@ -9149,6 +9222,24 @@
                   ],
                   "description": "Params for _goose/unstable/session/app-tools/call",
                   "title": "RequestAppToolCall_unstable"
+                },
+                {
+                  "allOf": [
+                    {
+                      "$ref": "#/$defs/RequestWebPaneOpen_unstable"
+                    }
+                  ],
+                  "description": "Params for _goose/unstable/session/web-pane/open",
+                  "title": "RequestWebPaneOpen_unstable"
+                },
+                {
+                  "allOf": [
+                    {
+                      "$ref": "#/$defs/RequestWebPaneClose_unstable"
+                    }
+                  ],
+                  "description": "Params for _goose/unstable/session/web-pane/close",
+                  "title": "RequestWebPaneClose_unstable"
                 }
               ]
             },
@@ -9195,6 +9286,22 @@
                         }
                       ],
                       "title": "AppToolCallResponse_unstable"
+                    },
+                    {
+                      "allOf": [
+                        {
+                          "$ref": "#/$defs/WebPaneOpenResponse_unstable"
+                        }
+                      ],
+                      "title": "WebPaneOpenResponse_unstable"
+                    },
+                    {
+                      "allOf": [
+                        {
+                          "$ref": "#/$defs/EmptyResponse"
+                        }
+                      ],
+                      "title": "EmptyResponse"
                     }
                   ]
                 },

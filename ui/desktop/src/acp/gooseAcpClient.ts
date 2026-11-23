@@ -20,15 +20,21 @@ import {
   type RecipeParamsResponse_unstable,
   type RequestAppToolCall_unstable,
   type RequestRecipeParams_unstable,
+  type RequestWebPaneClose_unstable,
+  type RequestWebPaneOpen_unstable,
+  type WebPaneOpenResponse_unstable,
   zCancelAppToolCallNotification_unstable,
   zGooseSessionNotification_unstable,
   zProviderDeviceCodeNotification_unstable,
   zRequestAppToolCall_unstable,
   zRequestRecipeParams_unstable,
+  zRequestWebPaneClose_unstable,
+  zRequestWebPaneOpen_unstable,
 } from '@aaif/goose-acp-client';
 
 const [gooseSessionUpdate, providerDeviceCode, appToolCallCancel] = GOOSE_EXT_NOTIFICATIONS;
-const [gooseRecipeParamsRequest, gooseAppToolCallRequest] = GOOSE_EXT_AGENT_REQUESTS;
+const [gooseRecipeParamsRequest, gooseAppToolCallRequest, webPaneOpenRequest, webPaneCloseRequest] =
+  GOOSE_EXT_AGENT_REQUESTS;
 
 export type GooseAcpCallbacks = {
   requestPermission: (request: RequestPermissionRequest) => Promise<RequestPermissionResponse>;
@@ -40,6 +46,12 @@ export type GooseAcpCallbacks = {
   unstable_sessionAppToolsCall: (
     request: RequestAppToolCall_unstable
   ) => Promise<AppToolCallResponse_unstable>;
+  unstable_sessionWebPaneOpen: (
+    request: RequestWebPaneOpen_unstable
+  ) => Promise<WebPaneOpenResponse_unstable>;
+  unstable_sessionWebPaneClose: (
+    request: RequestWebPaneClose_unstable
+  ) => Promise<Record<string, never>>;
   unstable_sessionUpdate: (notification: GooseSessionNotification_unstable) => Promise<void>;
   unstable_providerDeviceCode: (
     notification: ProviderDeviceCodeNotification_unstable
@@ -73,6 +85,12 @@ export function connectGooseAcpClient(
     )
     .onRequest(gooseAppToolCallRequest.method, zRequestAppToolCall_unstable, (context) =>
       callbacks.unstable_sessionAppToolsCall(context.params)
+    )
+    .onRequest(webPaneOpenRequest.method, zRequestWebPaneOpen_unstable, (context) =>
+      callbacks.unstable_sessionWebPaneOpen(context.params)
+    )
+    .onRequest(webPaneCloseRequest.method, zRequestWebPaneClose_unstable, (context) =>
+      callbacks.unstable_sessionWebPaneClose(context.params)
     )
     .onNotification(gooseSessionUpdate.method, zGooseSessionNotification_unstable, (context) =>
       callbacks.unstable_sessionUpdate(context.params)

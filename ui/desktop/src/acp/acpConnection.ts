@@ -19,6 +19,7 @@ import {
   type GooseAcpClient,
 } from './gooseAcpClient';
 import { callAppTool, cancelAppToolCall } from './appTools';
+import { closeWebPane, openWebPane } from './webPane';
 import { requestAcpPermission } from './permissionRequests';
 import { requestAcpRecipeParams } from './recipeParamRequests';
 
@@ -223,6 +224,8 @@ function createClientCallbacks(): GooseAcpCallbacks {
     createElicitation: requestAcpElicitation,
     unstable_sessionRecipeRequestParams: requestAcpRecipeParams,
     unstable_sessionAppToolsCall: callAppTool,
+    unstable_sessionWebPaneOpen: openWebPane,
+    unstable_sessionWebPaneClose: closeWebPane,
     sessionUpdate: handleAcpSessionNotification,
     unstable_sessionUpdate: handleAcpGooseSessionNotification,
     unstable_providerDeviceCode: handleAcpProviderDeviceCodeNotification,

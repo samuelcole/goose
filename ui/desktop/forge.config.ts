@@ -35,8 +35,7 @@ let cfg = {
       },
     ],
     // Usage descriptions for macOS TCC (Transparency, Consent, and Control)
-    NSMicrophoneUsageDescription:
-      'Goose needs access to your microphone for voice dictation.',
+    NSMicrophoneUsageDescription: 'Goose needs access to your microphone for voice dictation.',
     NSAppleEventsUsageDescription:
       'Goose needs access to send Apple Events to control other apps on your behalf.',
   },
@@ -191,6 +190,10 @@ module.exports = {
           {
             entry: 'src/preload.ts',
             config: 'vite.preload.config.mts',
+          },
+          {
+            entry: 'src/webPanePreload.ts',
+            config: 'vite.webPanePreload.config.mts',
           },
         ],
         renderer: [

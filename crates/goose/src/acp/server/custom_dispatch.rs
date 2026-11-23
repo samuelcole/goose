@@ -142,6 +142,15 @@ impl AcpConnection {
         self.on_live_voice_availability(req).await
     }
 
+    #[custom_method(RegisterWebPaneRequest)]
+    async fn dispatch_register_web_pane(
+        self: &Arc<Self>,
+        cx: &ConnectionTo<Client>,
+        req: RegisterWebPaneRequest,
+    ) -> Result<EmptyResponse, agent_client_protocol::Error> {
+        self.on_register_web_pane(cx, req).await
+    }
+
     #[custom_method(SyncAppToolsRequest)]
     async fn dispatch_sync_app_tools(
         self: &Arc<Self>,

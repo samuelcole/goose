@@ -161,6 +161,7 @@ import type {
   RecipeToYamlResponse_unstable,
   RefreshProviderInventoryRequest_unstable,
   RefreshProviderInventoryResponse_unstable,
+  RegisterWebPaneRequest_unstable,
   RemoveConfigExtensionRequest_unstable,
   RemoveSessionExtensionRequest_unstable,
   RenameSessionRequest_unstable,
@@ -402,6 +403,15 @@ export class GooseExtClient {
     return zLiveVoiceAvailabilityResponse_unstable.parse(
       raw,
     ) as LiveVoiceAvailabilityResponse_unstable;
+  }
+
+  async sessionWebPaneRegister_unstable(
+    params: RegisterWebPaneRequest_unstable,
+  ): Promise<void> {
+    await this.conn.request(
+      "_goose/unstable/session/web-pane/register",
+      params,
+    );
   }
 
   async sessionAppToolsSync_unstable(

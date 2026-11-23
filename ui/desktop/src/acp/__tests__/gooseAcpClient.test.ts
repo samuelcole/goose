@@ -38,6 +38,8 @@ function callbacks(): GooseAcpCallbacks {
       action: 'submit',
       values: { name: 'Ada' },
     }),
+    unstable_sessionWebPaneOpen: vi.fn(),
+    unstable_sessionWebPaneClose: vi.fn(),
     unstable_sessionAppToolsCall: vi.fn().mockResolvedValue({ text: 'ok', isError: false }),
     unstable_sessionUpdate: vi.fn(),
     unstable_providerDeviceCode: vi.fn(),

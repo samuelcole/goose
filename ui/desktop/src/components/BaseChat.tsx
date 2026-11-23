@@ -36,6 +36,8 @@ import SessionActionsHeader from './SessionActionsHeader';
 import { isAcpRecovering, subscribeToAcpRecovery } from '../acp/acpConnection';
 import type { LiveVoiceAvailabilityResponse_unstable } from '@aaif/goose-acp-client';
 import { acpGetLiveVoiceAvailability } from '../acp/liveVoice';
+import { registerWebPaneSession } from '../acp/webPane';
+import WebPanePanel, { WebPaneOriginPrompt } from './WebPane/WebPanePanel';
 import type { LiveVoiceController } from '../liveVoice/useLiveVoice';
 
 const NEW_LIVE_VOICE_GREETING = 'Hello! What can I help you with?';
@@ -172,6 +174,13 @@ export default function BaseChat({
 
   const sessionLoaded = session !== undefined;
   const isSubagentSession = session?.session_type === 'sub_agent';
+
+  useEffect(() => {
+    if (!sessionLoaded || isSubagentSession) return;
+    registerWebPaneSession(sessionId).catch((error: unknown) => {
+      console.error('Failed to register the web pane for this chat:', error);
+    });
+  }, [sessionId, sessionLoaded, isSubagentSession]);
   const liveVoiceChatBusy = chatState !== ChatState.Idle;
 
   useEffect(() => {
@@ -457,175 +466,179 @@ export default function BaseChat({
   }
 
   return (
-    <div className="h-full flex flex-col min-h-0">
-      <MainPanelLayout backgroundColor={'bg-background-primary'} removeTopPadding={true}>
-        {/* Chat container with sticky recipe header */}
-        <div className="flex flex-col flex-1 min-h-0 relative">
-          {/* Goose watermark - top right */}
-          <div className="absolute top-[14px] right-4 z-[60] flex flex-row items-center gap-1">
-            <a
-              href="https://goose-docs.ai"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="no-drag flex flex-row items-center gap-1 hover:opacity-80 transition-opacity"
+    <div className="h-full flex flex-row min-h-0">
+      <div className="h-full flex flex-col min-h-0 min-w-0 flex-1">
+        <MainPanelLayout backgroundColor={'bg-background-primary'} removeTopPadding={true}>
+          {/* Chat container with sticky recipe header */}
+          <div className="flex flex-col flex-1 min-h-0 relative">
+            {/* Goose watermark - top right */}
+            <div className="absolute top-[14px] right-4 z-[60] flex flex-row items-center gap-1">
+              <a
+                href="https://goose-docs.ai"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="no-drag flex flex-row items-center gap-1 hover:opacity-80 transition-opacity"
+              >
+                <Goose className="size-5 goose-icon-animation" />
+                <span className="text-sm leading-none text-text-secondary -translate-y-px">
+                  goose
+                </span>
+              </a>
+              <EnvironmentBadge className="translate-y-px" />
+            </div>
+
+            <SessionActionsHeader session={session} onSessionChange={updateSession} />
+
+            <ScrollArea
+              ref={scrollRef}
+              className={`flex-1 min-h-0 relative ${contentClassName}`}
+              autoScroll
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+              data-drop-zone="true"
+              paddingX={6}
+              paddingY={0}
             >
-              <Goose className="size-5 goose-icon-animation" />
-              <span className="text-sm leading-none text-text-secondary -translate-y-px">
-                goose
-              </span>
-            </a>
-            <EnvironmentBadge className="translate-y-px" />
+              {recipe?.title && (
+                <div className="sticky top-0 z-10 bg-background-primary px-0 -mx-6 mb-6 pt-6">
+                  <RecipeHeader title={recipe.title} />
+                </div>
+              )}
+
+              {recipe && !isSubagentSession && (
+                <div className={hasStartedUsingRecipe ? 'mb-6' : ''}>
+                  <RecipeActivities
+                    append={appendToChat}
+                    activities={Array.isArray(recipe.activities) ? recipe.activities : null}
+                  />
+                </div>
+              )}
+
+              {messages.length > 0 || recipe ? (
+                <>
+                  <SearchView key={sessionId}>
+                    <div ref={conversationRef}>
+                      <MessageList
+                        messages={messages}
+                        sessionId={sessionId}
+                        toolCallNotifications={toolCallNotifications}
+                        append={isSubagentSession ? undefined : appendToChat}
+                        isUserMessage={isUserMessage}
+                        isStreamingMessage={chatState !== ChatState.Idle}
+                        onRenderingComplete={handleRenderingComplete}
+                        onMessageUpdate={isSubagentSession ? undefined : onMessageUpdate}
+                        submitElicitationResponse={submitElicitationResponse}
+                      />
+                    </div>
+                  </SearchView>
+
+                  <div className="block h-8" />
+                </>
+              ) : null}
+            </ScrollArea>
+
+            {chatState !== ChatState.Idle && (
+              <div className="absolute bottom-1 left-4 z-20 pointer-events-none">
+                <LoadingGoose chatState={chatState} message={progressMessage} />
+              </div>
+            )}
           </div>
 
-          <SessionActionsHeader session={session} onSessionChange={updateSession} />
-
-          <ScrollArea
-            ref={scrollRef}
-            className={`flex-1 min-h-0 relative ${contentClassName}`}
-            autoScroll
-            onDrop={handleDrop}
-            onDragOver={handleDragOver}
-            data-drop-zone="true"
-            paddingX={6}
-            paddingY={0}
-          >
-            {recipe?.title && (
-              <div className="sticky top-0 z-10 bg-background-primary px-0 -mx-6 mb-6 pt-6">
-                <RecipeHeader title={recipe.title} />
-              </div>
-            )}
-
-            {recipe && !isSubagentSession && (
-              <div className={hasStartedUsingRecipe ? 'mb-6' : ''}>
-                <RecipeActivities
-                  append={appendToChat}
-                  activities={Array.isArray(recipe.activities) ? recipe.activities : null}
-                />
-              </div>
-            )}
-
-            {messages.length > 0 || recipe ? (
-              <>
-                <SearchView key={sessionId}>
-                  <div ref={conversationRef}>
-                    <MessageList
-                      messages={messages}
-                      sessionId={sessionId}
-                      toolCallNotifications={toolCallNotifications}
-                      append={isSubagentSession ? undefined : appendToChat}
-                      isUserMessage={isUserMessage}
-                      isStreamingMessage={chatState !== ChatState.Idle}
-                      onRenderingComplete={handleRenderingComplete}
-                      onMessageUpdate={isSubagentSession ? undefined : onMessageUpdate}
-                      submitElicitationResponse={submitElicitationResponse}
-                    />
-                  </div>
-                </SearchView>
-
-                <div className="block h-8" />
-              </>
-            ) : null}
-          </ScrollArea>
-
-          {chatState !== ChatState.Idle && (
-            <div className="absolute bottom-1 left-4 z-20 pointer-events-none">
-              <LoadingGoose chatState={chatState} message={progressMessage} />
+          {acpRecovering && (
+            <div role="status" className="mx-4 mb-2 text-sm text-text-secondary">
+              {intl.formatMessage(i18n.reconnecting)}
             </div>
           )}
-        </div>
 
-        {acpRecovering && (
-          <div role="status" className="mx-4 mb-2 text-sm text-text-secondary">
-            {intl.formatMessage(i18n.reconnecting)}
-          </div>
-        )}
-
-        {quoteButtonPos && !isSubagentSession && (
-          <button
-            className="fixed z-50 -translate-x-1/2 -translate-y-full rounded-md bg-background-inverse px-2 py-1 text-xs font-medium text-text-inverse shadow-md hover:opacity-90"
-            style={{ left: quoteButtonPos.x, top: quoteButtonPos.y }}
-            onMouseDown={(e) => {
-              e.preventDefault();
-              const sel = window.getSelection();
-              const text = sel?.toString().trim() ?? '';
-              if (text) {
-                setPendingQuote(text);
-                sel?.removeAllRanges();
-              }
-              setQuoteButtonPos(null);
-            }}
-          >
-            Add to message
-          </button>
-        )}
-
-        {isSubagentSession ? (
-          <SubagentSessionNotice
-            refreshing={chatState === ChatState.LoadingConversation}
-            onRefresh={() => void refreshSession()}
-          />
-        ) : (
-          <ChatInputCard
-            className={cn(
-              'relative z-30 mx-4 mb-4',
-              !disableAnimation && 'animate-[fadein_400ms_ease-in_forwards]'
-            )}
-          >
-            <ChatInput
-              inputRef={chatInputRef}
-              sessionId={sessionId}
-              handleSubmit={chatInputSubmit}
-              chatState={chatState}
-              hasActiveRun={hasActiveRun}
-              onStop={stopStreaming}
-              onSteerQueuedMessage={onSteerQueuedMessage}
-              pauseQueueOnStop={pauseQueueOnStop}
-              queueProcessingBlocked={queueProcessingBlocked || acpRecovering}
-              commandHistory={commandHistory}
-              initialValue={initialPrompt}
-              setView={setView}
-              totalTokens={tokenState?.totalTokens ?? session?.usage?.total_tokens ?? undefined}
-              contextLimit={tokenState?.contextLimit}
-              accumulatedInputTokens={
-                tokenState?.accumulatedInputTokens ??
-                session?.accumulated_usage?.input_tokens ??
-                undefined
-              }
-              accumulatedOutputTokens={
-                tokenState?.accumulatedOutputTokens ??
-                session?.accumulated_usage?.output_tokens ??
-                undefined
-              }
-              accumulatedCost={
-                tokenState?.accumulatedCost ?? session?.accumulated_cost ?? undefined
-              }
-              droppedFiles={droppedFiles}
-              onFilesProcessed={() => setDroppedFiles([])} // Clear dropped files after processing
-              messages={messages}
-              disableAnimation={disableAnimation}
-              recipe={recipe}
-              initialPrompt={initialPrompt}
-              sessionModel={sessionModel}
-              sessionProvider={sessionProvider}
-              sessionLoaded={sessionLoaded}
-              workingDir={session?.working_dir}
-              onWorkingDirChange={handleWorkingDirChange}
-              latestInference={latestInference}
-              liveVoice={{
-                availability: liveVoiceAvailability,
-                phase: ownsLiveVoice ? liveVoice.phase : 'idle',
-                muted: ownsLiveVoice ? liveVoice.muted : false,
-                activeInAnotherSession: liveVoiceActiveInAnotherSession,
-                start: () => startLiveVoice(),
-                stop: liveVoice.stop,
-                toggleMute: liveVoice.toggleMute,
+          {quoteButtonPos && !isSubagentSession && (
+            <button
+              className="fixed z-50 -translate-x-1/2 -translate-y-full rounded-md bg-background-inverse px-2 py-1 text-xs font-medium text-text-inverse shadow-md hover:opacity-90"
+              style={{ left: quoteButtonPos.x, top: quoteButtonPos.y }}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                const sel = window.getSelection();
+                const text = sel?.toString().trim() ?? '';
+                if (text) {
+                  setPendingQuote(text);
+                  sel?.removeAllRanges();
+                }
+                setQuoteButtonPos(null);
               }}
-              appendQuote={pendingQuote}
-              onAppendQuoteConsumed={() => setPendingQuote(null)}
+            >
+              Add to message
+            </button>
+          )}
+
+          {isSubagentSession ? (
+            <SubagentSessionNotice
+              refreshing={chatState === ChatState.LoadingConversation}
+              onRefresh={() => void refreshSession()}
             />
-          </ChatInputCard>
-        )}
-      </MainPanelLayout>
+          ) : (
+            <ChatInputCard
+              className={cn(
+                'relative z-30 mx-4 mb-4',
+                !disableAnimation && 'animate-[fadein_400ms_ease-in_forwards]'
+              )}
+            >
+              <ChatInput
+                inputRef={chatInputRef}
+                sessionId={sessionId}
+                handleSubmit={chatInputSubmit}
+                chatState={chatState}
+                hasActiveRun={hasActiveRun}
+                onStop={stopStreaming}
+                onSteerQueuedMessage={onSteerQueuedMessage}
+                pauseQueueOnStop={pauseQueueOnStop}
+                queueProcessingBlocked={queueProcessingBlocked || acpRecovering}
+                commandHistory={commandHistory}
+                initialValue={initialPrompt}
+                setView={setView}
+                totalTokens={tokenState?.totalTokens ?? session?.usage?.total_tokens ?? undefined}
+                contextLimit={tokenState?.contextLimit}
+                accumulatedInputTokens={
+                  tokenState?.accumulatedInputTokens ??
+                  session?.accumulated_usage?.input_tokens ??
+                  undefined
+                }
+                accumulatedOutputTokens={
+                  tokenState?.accumulatedOutputTokens ??
+                  session?.accumulated_usage?.output_tokens ??
+                  undefined
+                }
+                accumulatedCost={
+                  tokenState?.accumulatedCost ?? session?.accumulated_cost ?? undefined
+                }
+                droppedFiles={droppedFiles}
+                onFilesProcessed={() => setDroppedFiles([])} // Clear dropped files after processing
+                messages={messages}
+                disableAnimation={disableAnimation}
+                recipe={recipe}
+                initialPrompt={initialPrompt}
+                sessionModel={sessionModel}
+                sessionProvider={sessionProvider}
+                sessionLoaded={sessionLoaded}
+                workingDir={session?.working_dir}
+                onWorkingDirChange={handleWorkingDirChange}
+                latestInference={latestInference}
+                liveVoice={{
+                  availability: liveVoiceAvailability,
+                  phase: ownsLiveVoice ? liveVoice.phase : 'idle',
+                  muted: ownsLiveVoice ? liveVoice.muted : false,
+                  activeInAnotherSession: liveVoiceActiveInAnotherSession,
+                  start: () => startLiveVoice(),
+                  stop: liveVoice.stop,
+                  toggleMute: liveVoice.toggleMute,
+                }}
+                appendQuote={pendingQuote}
+                onAppendQuoteConsumed={() => setPendingQuote(null)}
+              />
+            </ChatInputCard>
+          )}
+        </MainPanelLayout>
+      </div>
+      {!isSubagentSession && <WebPanePanel sessionId={sessionId} />}
+      {!isSubagentSession && <WebPaneOriginPrompt sessionId={sessionId} />}
     </div>
   );
 }

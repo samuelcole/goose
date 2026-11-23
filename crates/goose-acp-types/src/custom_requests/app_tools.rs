@@ -56,3 +56,42 @@ pub struct AppToolCallResponse {
     #[serde(default)]
     pub is_error: bool,
 }
+
+pub const REQUEST_WEB_PANE_OPEN_METHOD: &str = "_goose/unstable/session/web-pane/open";
+pub const REQUEST_WEB_PANE_CLOSE_METHOD: &str = "_goose/unstable/session/web-pane/close";
+
+/// Tell the agent this client can show a web pane beside the given chat, so the
+/// agent is offered tools to open pages there.
+#[derive(Debug, Default, Clone, Serialize, Deserialize, JsonSchema, JsonRpcRequest)]
+#[request(
+    method = "_goose/unstable/session/web-pane/register",
+    response = EmptyResponse
+)]
+#[serde(rename_all = "camelCase")]
+pub struct RegisterWebPaneRequest {
+    pub session_id: String,
+}
+
+/// Ask the client to load a URL into the chat's web pane, opening it if needed.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestWebPaneOpen {
+    pub session_id: String,
+    pub url: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct WebPaneOpenResponse {
+    /// Where the pane ended up after redirects.
+    pub url: String,
+    #[serde(default)]
+    pub title: String,
+}
+
+/// Ask the client to close the chat's web pane.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestWebPaneClose {
+    pub session_id: String,
+}
