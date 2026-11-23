@@ -84,10 +84,8 @@ fn validate(tools: &[AppToolDescriptor]) -> Result<()> {
     Ok(())
 }
 
-// Provider tool names allow only [A-Za-z0-9_-] and are length-limited, so the
-// app's name and the tool's name are folded into that alphabet.
-fn exposed_name(extension_name: &str, tool_name: &str) -> String {
-    let sanitized: String = format!("{extension_name}_{tool_name}")
+fn fold_to_tool_alphabet(value: &str) -> String {
+    value
         .chars()
         .map(|c| {
             if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
@@ -96,8 +94,38 @@ fn exposed_name(extension_name: &str, tool_name: &str) -> String {
                 '_'
             }
         })
+        .collect()
+}
+
+// Provider tool names allow only [A-Za-z0-9_-] and are length-limited, so the
+// app's name and the tool's name are folded into that alphabet. When that is too
+// long (long hosts such as preview deployments), the app part is shortened rather
+// than the tool's, and a hash of the full pair keeps the result unique.
+fn exposed_name(extension_name: &str, tool_name: &str) -> String {
+    let full = fold_to_tool_alphabet(&format!("{extension_name}_{tool_name}"));
+    if full.len() <= MAX_EXPOSED_NAME_LEN {
+        return full;
+    }
+    let hash: String = blake3::hash(format!("{extension_name}\0{tool_name}").as_bytes())
+        .to_hex()
+        .chars()
+        .take(6)
         .collect();
-    sanitized.chars().take(MAX_EXPOSED_NAME_LEN).collect()
+    let tool = fold_to_tool_alphabet(tool_name);
+    let app_room = MAX_EXPOSED_NAME_LEN.saturating_sub(tool.len() + hash.len() + 2);
+    if app_room > 0 {
+        let app: String = fold_to_tool_alphabet(extension_name)
+            .chars()
+            .take(app_room)
+            .collect();
+        format!("{app}_{hash}_{tool}")
+    } else {
+        let tool: String = tool
+            .chars()
+            .take(MAX_EXPOSED_NAME_LEN - hash.len() - 1)
+            .collect();
+        format!("{hash}_{tool}")
+    }
 }
 
 impl AppToolsRegistry {
@@ -329,6 +357,32 @@ mod tests {
         assert_eq!(
             exposed_name("tale", &"x".repeat(100)).len(),
             MAX_EXPOSED_NAME_LEN
+        );
+    }
+
+    #[test]
+    fn long_hosts_keep_tool_names_whole_and_distinct() {
+        let host = "tale-git-tal-586-page-tools-samuelcole.vercel.app";
+        let tools = [
+            "reading_position",
+            "go_to",
+            "point_at",
+            "mark",
+            "unmark",
+            "play",
+            "pause",
+        ];
+        let names: Vec<_> = tools.iter().map(|tool| exposed_name(host, tool)).collect();
+        for (name, tool) in names.iter().zip(tools) {
+            assert!(name.len() <= MAX_EXPOSED_NAME_LEN, "{name}");
+            assert!(name.ends_with(&format!("_{tool}")), "{name}");
+            assert!(name.starts_with("tale-git"), "{name}");
+        }
+        let unique: std::collections::HashSet<_> = names.iter().collect();
+        assert_eq!(unique.len(), tools.len());
+        assert_ne!(
+            exposed_name(&format!("{host}a"), "mark"),
+            exposed_name(&format!("{host}b"), "mark")
         );
     }
 
