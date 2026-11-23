@@ -39,6 +39,8 @@ pub struct SyncAppToolsRequest {
 pub struct RequestAppToolCall {
     pub session_id: String,
     pub app_instance_id: String,
+    /// Names this call in a later `app-tools/cancel` notification.
+    pub call_id: String,
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub arguments: Option<serde_json::Map<String, serde_json::Value>>,

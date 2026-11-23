@@ -167,6 +167,17 @@ where
     }
 }
 
+/// Tells the client to abort an app tool call the agent no longer waits for,
+/// because the turn was cancelled or the call timed out.
+#[derive(Debug, Default, Clone, Serialize, Deserialize, JsonSchema, JsonRpcNotification)]
+#[notification(method = "_goose/unstable/session/app-tools/cancel")]
+#[serde(rename_all = "camelCase")]
+pub struct CancelAppToolCallNotification {
+    pub session_id: String,
+    pub app_instance_id: String,
+    pub call_id: String,
+}
+
 /// Schemas for every goose-custom outbound notification. To register a new
 /// notification, define the struct above (with `JsonRpcNotification` +
 /// `Default`) and add one line below.
@@ -174,6 +185,7 @@ pub fn custom_notification_schemas(generator: &mut SchemaGenerator) -> Vec<Custo
     vec![
         notification_schema::<GooseSessionNotification>(generator),
         notification_schema::<ProviderDeviceCodeNotification>(generator),
+        notification_schema::<CancelAppToolCallNotification>(generator),
     ]
 }
 

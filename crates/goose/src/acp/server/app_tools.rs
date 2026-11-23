@@ -4,6 +4,7 @@ use agent_client_protocol::{
     Client, ConnectionTo, JsonRpcMessage, JsonRpcRequest, JsonRpcResponse, UntypedMessage,
 };
 use async_trait::async_trait;
+use goose_acp_types::custom_notifications::CancelAppToolCallNotification;
 use goose_acp_types::custom_requests::{
     AppToolCallResponse, EmptyResponse, RequestAppToolCall, SyncAppToolsRequest,
     REQUEST_APP_TOOL_CALL_METHOD,
@@ -34,6 +35,17 @@ impl AppToolCaller for ConnectionAppToolCaller {
             .map_err(|_| anyhow::anyhow!("the app went away before answering"))?
             .map_err(|e| anyhow::anyhow!("the app failed to run the tool: {}", e.message))
     }
+
+    fn cancel(&self, request: &RequestAppToolCall) {
+        let notification = CancelAppToolCallNotification {
+            session_id: request.session_id.clone(),
+            app_instance_id: request.app_instance_id.clone(),
+            call_id: request.call_id.clone(),
+        };
+        if let Err(e) = self.cx.send_notification(notification) {
+            tracing::warn!("Failed to send app tool cancel notification: {}", e);
+        }
+    }
 }
 
 impl AcpConnection {
@@ -50,6 +62,7 @@ impl AcpConnection {
         }
         APP_TOOLS
             .sync(
+                self.connection_id,
                 &req.session_id,
                 &req.app_instance_id,
                 &req.extension_name,

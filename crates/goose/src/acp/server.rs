@@ -337,6 +337,7 @@ pub struct AcpConnection {
 
 impl Drop for AcpConnection {
     fn drop(&mut self) {
+        crate::agents::app_tools::APP_TOOLS.drop_connection(self.connection_id);
         if let Ok(handle) = tokio::runtime::Handle::try_current() {
             let services = Arc::clone(&self.services);
             let connection_id = self.connection_id;

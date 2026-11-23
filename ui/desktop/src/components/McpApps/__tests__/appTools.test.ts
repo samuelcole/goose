@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import {
   callAppTool,
+  cancelAppToolCall,
   registerAppToolHandler,
   resetAppToolHandlersForTests,
 } from '../../../acp/appTools';
@@ -28,18 +29,31 @@ describe('callAppTool', () => {
   beforeEach(() => resetAppToolHandlersForTests());
 
   it('routes to the fragment document that registered the tool', async () => {
-    const unregister = registerAppToolHandler('doc-1', async (name, args) => ({
-      text: `${name}:${JSON.stringify(args)}`,
-      isError: false,
-    }));
+    const cancelled: string[] = [];
+    const unregister = registerAppToolHandler('doc-1', {
+      call: async (name, args, callId) => ({
+        text: `${name}:${JSON.stringify(args)}:${callId}`,
+        isError: false,
+      }),
+      cancel: (callId) => cancelled.push(callId),
+    });
 
     await expect(
-      callAppTool({ sessionId: 's', appInstanceId: 'doc-1', name: 'pos', arguments: { a: 1 } })
-    ).resolves.toEqual({ text: 'pos:{"a":1}', isError: false });
+      callAppTool({
+        sessionId: 's',
+        appInstanceId: 'doc-1',
+        callId: 'c1',
+        name: 'pos',
+        arguments: { a: 1 },
+      })
+    ).resolves.toEqual({ text: 'pos:{"a":1}:c1', isError: false });
+
+    await cancelAppToolCall({ sessionId: 's', appInstanceId: 'doc-1', callId: 'c2' });
+    expect(cancelled).toEqual(['c2']);
 
     unregister();
     await expect(
-      callAppTool({ sessionId: 's', appInstanceId: 'doc-1', name: 'pos' })
+      callAppTool({ sessionId: 's', appInstanceId: 'doc-1', callId: 'c3', name: 'pos' })
     ).resolves.toMatchObject({ isError: true });
   });
 });
@@ -87,5 +101,37 @@ describe('AppBridge app tools round trip', () => {
       }),
     ]);
     expect(result).toEqual({ text: 'chapter 7', isError: false });
+  });
+
+  it('sends notifications/cancelled to the app when a call is aborted', async () => {
+    const bridge = new AppBridge(null, { name: 'h', version: '1' }, {}, { hostContext: {} });
+    const [hostSide, appSide] = InMemoryTransport.createLinkedPair();
+    await bridge.connect(hostSide as never);
+    const received: JSONRPCMessage[] = [];
+    appSide.onmessage = (message: JSONRPCMessage) => received.push(message);
+    await appSide.start();
+
+    const controller = new AbortController();
+    const pending = (
+      bridge as unknown as {
+        request: (r: object, s: z.ZodType, o: { signal: AbortSignal }) => Promise<unknown>;
+      }
+    ).request(
+      { method: APP_TOOLS_CALL_METHOD, params: { name: 'slow', arguments: {} } },
+      z.object({}),
+      { signal: controller.signal }
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    controller.abort('agent cancelled');
+
+    await expect(pending).rejects.toBeDefined();
+    const call = received.find((m) => 'method' in m && m.method === APP_TOOLS_CALL_METHOD);
+    expect(call && 'id' in call).toBe(true);
+    expect(received).toContainEqual(
+      expect.objectContaining({
+        method: 'notifications/cancelled',
+        params: expect.objectContaining({ requestId: (call as { id: number }).id }),
+      })
+    );
   });
 });

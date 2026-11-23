@@ -26,9 +26,13 @@ pub const CALL_TIMEOUT: Duration = Duration::from_secs(60);
 #[async_trait]
 pub trait AppToolCaller: Send + Sync {
     async fn call(&self, request: RequestAppToolCall) -> Result<AppToolCallResponse>;
+
+    /// Best effort: tells the app to abort a call goose stopped waiting for.
+    fn cancel(&self, request: &RequestAppToolCall);
 }
 
 struct AppEntry {
+    connection_id: u64,
     extension_name: String,
     tools: Vec<AppToolDescriptor>,
     caller: Arc<dyn AppToolCaller>,
@@ -99,6 +103,7 @@ fn exposed_name(extension_name: &str, tool_name: &str) -> String {
 impl AppToolsRegistry {
     pub fn sync(
         &self,
+        connection_id: u64,
         session_id: &str,
         app_instance_id: &str,
         extension_name: &str,
@@ -119,6 +124,7 @@ impl AppToolsRegistry {
         apps.insert(
             app_instance_id.to_string(),
             AppEntry {
+                connection_id,
                 extension_name: extension_name.to_string(),
                 tools,
                 caller,
@@ -126,6 +132,17 @@ impl AppToolsRegistry {
             },
         );
         Ok(())
+    }
+
+    /// A client connection that went away takes its fragments' tools with it, so a
+    /// reloaded window can't leave registrations behind. Entries synced over other
+    /// connections stay, even if that connection closes after a newer one opened.
+    pub fn drop_connection(&self, connection_id: u64) {
+        let mut sessions = self.sessions.lock().expect("app tools registry poisoned");
+        for apps in sessions.values_mut() {
+            apps.retain(|_, entry| entry.connection_id != connection_id);
+        }
+        sessions.retain(|_, apps| !apps.is_empty());
     }
 
     /// When two fragments expose the same name, the most recently synced one wins,
@@ -179,14 +196,22 @@ impl AppToolsRegistry {
         let request = RequestAppToolCall {
             session_id: session_id.to_string(),
             app_instance_id: tool.app_instance_id,
+            call_id: uuid::Uuid::now_v7().to_string(),
             name: tool.descriptor.name,
             arguments,
         };
         tokio::select! {
-            result = tokio::time::timeout(CALL_TIMEOUT, caller.call(request)) => {
-                result.map_err(|_| anyhow!("app tool {exposed} timed out"))?
+            result = tokio::time::timeout(CALL_TIMEOUT, caller.call(request.clone())) => match result {
+                Ok(response) => response,
+                Err(_) => {
+                    caller.cancel(&request);
+                    bail!("app tool {exposed} timed out")
+                }
+            },
+            _ = cancel.cancelled() => {
+                caller.cancel(&request);
+                bail!("app tool {exposed} was cancelled")
             }
-            _ = cancel.cancelled() => bail!("app tool {exposed} was cancelled"),
         }
     }
 }
@@ -205,6 +230,24 @@ mod tests {
                 ..Default::default()
             })
         }
+
+        fn cancel(&self, _request: &RequestAppToolCall) {}
+    }
+
+    #[derive(Default)]
+    struct HangingCaller {
+        cancelled: Mutex<Vec<String>>,
+    }
+
+    #[async_trait]
+    impl AppToolCaller for HangingCaller {
+        async fn call(&self, _request: RequestAppToolCall) -> Result<AppToolCallResponse> {
+            std::future::pending().await
+        }
+
+        fn cancel(&self, request: &RequestAppToolCall) {
+            self.cancelled.lock().unwrap().push(request.call_id.clone());
+        }
     }
 
     fn tool(name: &str) -> AppToolDescriptor {
@@ -216,8 +259,24 @@ mod tests {
     }
 
     fn sync(registry: &AppToolsRegistry, instance: &str, tools: Vec<AppToolDescriptor>) {
+        sync_on(registry, 1, instance, tools);
+    }
+
+    fn sync_on(
+        registry: &AppToolsRegistry,
+        connection_id: u64,
+        instance: &str,
+        tools: Vec<AppToolDescriptor>,
+    ) {
         registry
-            .sync("s1", instance, "tale", tools, Arc::new(EchoCaller))
+            .sync(
+                connection_id,
+                "s1",
+                instance,
+                "tale",
+                tools,
+                Arc::new(EchoCaller),
+            )
             .unwrap();
     }
 
@@ -255,7 +314,7 @@ mod tests {
             too_many,
         ] {
             assert!(registry
-                .sync("s1", "a", "tale", tools, Arc::new(EchoCaller))
+                .sync(1, "s1", "a", "tale", tools, Arc::new(EchoCaller))
                 .is_err());
         }
         assert!(registry.list("s1").is_empty());
@@ -295,6 +354,41 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(response.text, "old:position");
+    }
+
+    #[test]
+    fn closing_a_connection_drops_only_its_registrations() {
+        let registry = AppToolsRegistry::default();
+        sync_on(&registry, 1, "old-window", vec![tool("position")]);
+        sync_on(&registry, 2, "new-window", vec![tool("chapters")]);
+
+        registry.drop_connection(1);
+
+        let names: Vec<_> = registry
+            .list("s1")
+            .into_iter()
+            .map(|t| t.exposed_name)
+            .collect();
+        assert_eq!(names, vec!["tale_chapters"]);
+    }
+
+    #[tokio::test]
+    async fn cancelling_a_call_tells_the_app() {
+        let registry = AppToolsRegistry::default();
+        let caller = Arc::new(HangingCaller::default());
+        registry
+            .sync(1, "s1", "a", "tale", vec![tool("position")], caller.clone())
+            .unwrap();
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+
+        let error = registry
+            .call("s1", "tale_position", None, cancel)
+            .await
+            .unwrap_err();
+
+        assert!(error.to_string().contains("cancelled"));
+        assert_eq!(caller.cancelled.lock().unwrap().len(), 1);
     }
 
     #[tokio::test]

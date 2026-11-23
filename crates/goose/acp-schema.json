@@ -7224,6 +7224,28 @@
       "x-side": "agent",
       "x-method": "_goose/unstable/providers/authentication/device-code"
     },
+    "CancelAppToolCallNotification_unstable": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        },
+        "appInstanceId": {
+          "type": "string"
+        },
+        "callId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "sessionId",
+        "appInstanceId",
+        "callId"
+      ],
+      "description": "Tells the client to abort an app tool call the agent no longer waits for,\nbecause the turn was cancelled or the call timed out.",
+      "x-side": "agent",
+      "x-method": "_goose/unstable/session/app-tools/cancel"
+    },
     "RequestRecipeParams_unstable": {
       "type": "object",
       "properties": {
@@ -7285,6 +7307,10 @@
         "appInstanceId": {
           "type": "string"
         },
+        "callId": {
+          "type": "string",
+          "description": "Names this call in a later `app-tools/cancel` notification."
+        },
         "name": {
           "type": "string"
         },
@@ -7299,6 +7325,7 @@
       "required": [
         "sessionId",
         "appInstanceId",
+        "callId",
         "name"
       ],
       "description": "Ask the client to run a tool inside the fragment that registered it.",
@@ -9065,6 +9092,15 @@
                   ],
                   "description": "Params for _goose/unstable/providers/authentication/device-code",
                   "title": "ProviderDeviceCodeNotification_unstable"
+                },
+                {
+                  "allOf": [
+                    {
+                      "$ref": "#/$defs/CancelAppToolCallNotification_unstable"
+                    }
+                  ],
+                  "description": "Params for _goose/unstable/session/app-tools/cancel",
+                  "title": "CancelAppToolCallNotification_unstable"
                 }
               ]
             },

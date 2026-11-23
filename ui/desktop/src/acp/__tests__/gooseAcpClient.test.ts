@@ -41,6 +41,7 @@ function callbacks(): GooseAcpCallbacks {
     unstable_sessionAppToolsCall: vi.fn().mockResolvedValue({ text: 'ok', isError: false }),
     unstable_sessionUpdate: vi.fn(),
     unstable_providerDeviceCode: vi.fn(),
+    unstable_sessionAppToolsCancel: vi.fn(),
   };
 }
 

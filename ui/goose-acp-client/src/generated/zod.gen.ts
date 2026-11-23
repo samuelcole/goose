@@ -2361,6 +2361,16 @@ export const zProviderDeviceCodeNotification_unstable = z.object({
 });
 
 /**
+ * Tells the client to abort an app tool call the agent no longer waits for,
+ * because the turn was cancelled or the call timed out.
+ */
+export const zCancelAppToolCallNotification_unstable = z.object({
+    sessionId: z.string(),
+    appInstanceId: z.string(),
+    callId: z.string()
+});
+
+/**
  * Ask the client to provide values for a recipe's parameters.
  */
 export const zRequestRecipeParams_unstable = z.object({
@@ -2382,6 +2392,7 @@ export const zRecipeParamsResponse_unstable = z.object({
 export const zRequestAppToolCall_unstable = z.object({
     sessionId: z.string(),
     appInstanceId: z.string(),
+    callId: z.string(),
     name: z.string(),
     arguments: z.record(z.string(), z.unknown()).nullish()
 });
@@ -2615,7 +2626,8 @@ export const zExtNotification = z.object({
     params: z.union([
         z.union([
             zGooseSessionNotification_unstable,
-            zProviderDeviceCodeNotification_unstable
+            zProviderDeviceCodeNotification_unstable,
+            zCancelAppToolCallNotification_unstable
         ]),
         z.record(z.string(), z.unknown())
     ]).nullish()

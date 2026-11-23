@@ -184,7 +184,8 @@ type FallbackRequestHandler = {
 type UntypedBridgeRequest = {
   request: <T extends z.ZodType>(
     request: { method: string; params?: Record<string, unknown> },
-    resultSchema: T
+    resultSchema: T,
+    options?: { signal?: AbortSignal }
   ) => Promise<z.infer<T>>;
 };
 
@@ -433,11 +434,25 @@ function GooseAppFrame({
     const bridge = bridgeRef.current;
     if (!connected || !bridge) return;
     const documentId = uuidv7();
-    const callTool: AppToolHandler = (name, args) =>
-      (bridge as unknown as UntypedBridgeRequest).request(
-        { method: APP_TOOLS_CALL_METHOD, params: { name, arguments: args } },
-        appToolCallResultSchema
-      );
+    // Aborting a bridge request makes the SDK send notifications/cancelled to the
+    // fragment, which the shim turns into an abort of that call's signal.
+    const inFlight = new Map<string, AbortController>();
+    const callTool: AppToolHandler = {
+      call: async (name, args, callId) => {
+        const controller = new AbortController();
+        inFlight.set(callId, controller);
+        try {
+          return await (bridge as unknown as UntypedBridgeRequest).request(
+            { method: APP_TOOLS_CALL_METHOD, params: { name, arguments: args } },
+            appToolCallResultSchema,
+            { signal: controller.signal }
+          );
+        } finally {
+          inFlight.delete(callId);
+        }
+      },
+      cancel: (callId) => inFlight.get(callId)?.abort(),
+    };
     (bridge as FallbackRequestHandler).fallbackNotificationHandler = async (notification) => {
       if (notification.method === APP_TOOLS_SYNC_METHOD) {
         const tools = appToolDescriptorsSchema.parse(notification.params?.tools);

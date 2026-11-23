@@ -2850,6 +2850,16 @@ export type ProviderDeviceCodeNotification_unstable = {
 };
 
 /**
+ * Tells the client to abort an app tool call the agent no longer waits for,
+ * because the turn was cancelled or the call timed out.
+ */
+export type CancelAppToolCallNotification_unstable = {
+    sessionId: string;
+    appInstanceId: string;
+    callId: string;
+};
+
+/**
  * Ask the client to provide values for a recipe's parameters.
  */
 export type RequestRecipeParams_unstable = {
@@ -2873,6 +2883,10 @@ export type RecipeParamsAction = 'submit' | 'cancel';
 export type RequestAppToolCall_unstable = {
     sessionId: string;
     appInstanceId: string;
+    /**
+     * Names this call in a later `app-tools/cancel` notification.
+     */
+    callId: string;
     name: string;
     arguments?: {
         [key: string]: unknown;
@@ -2909,7 +2923,7 @@ export type ExtResponse = {
 
 export type ExtNotification = {
     method: string;
-    params?: GooseSessionNotification_unstable | ProviderDeviceCodeNotification_unstable | {
+    params?: GooseSessionNotification_unstable | ProviderDeviceCodeNotification_unstable | CancelAppToolCallNotification_unstable | {
         [key: string]: unknown;
     } | null;
 };

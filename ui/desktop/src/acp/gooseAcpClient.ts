@@ -14,18 +14,20 @@ import {
   GOOSE_EXT_NOTIFICATIONS,
   GooseExtClient,
   type GooseSessionNotification_unstable,
+  type CancelAppToolCallNotification_unstable,
   type ProviderDeviceCodeNotification_unstable,
   type AppToolCallResponse_unstable,
   type RecipeParamsResponse_unstable,
   type RequestAppToolCall_unstable,
   type RequestRecipeParams_unstable,
+  zCancelAppToolCallNotification_unstable,
   zGooseSessionNotification_unstable,
   zProviderDeviceCodeNotification_unstable,
   zRequestAppToolCall_unstable,
   zRequestRecipeParams_unstable,
 } from '@aaif/goose-acp-client';
 
-const [gooseSessionUpdate, providerDeviceCode] = GOOSE_EXT_NOTIFICATIONS;
+const [gooseSessionUpdate, providerDeviceCode, appToolCallCancel] = GOOSE_EXT_NOTIFICATIONS;
 const [gooseRecipeParamsRequest, gooseAppToolCallRequest] = GOOSE_EXT_AGENT_REQUESTS;
 
 export type GooseAcpCallbacks = {
@@ -41,6 +43,9 @@ export type GooseAcpCallbacks = {
   unstable_sessionUpdate: (notification: GooseSessionNotification_unstable) => Promise<void>;
   unstable_providerDeviceCode: (
     notification: ProviderDeviceCodeNotification_unstable
+  ) => Promise<void>;
+  unstable_sessionAppToolsCancel: (
+    notification: CancelAppToolCallNotification_unstable
   ) => Promise<void>;
 };
 
@@ -76,6 +81,9 @@ export function connectGooseAcpClient(
       providerDeviceCode.method,
       zProviderDeviceCodeNotification_unstable,
       (context) => callbacks.unstable_providerDeviceCode(context.params)
+    )
+    .onNotification(appToolCallCancel.method, zCancelAppToolCallNotification_unstable, (context) =>
+      callbacks.unstable_sessionAppToolsCancel(context.params)
     );
 
   const connection = app.connect(stream);

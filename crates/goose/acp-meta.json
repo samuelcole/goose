@@ -569,6 +569,10 @@
     {
       "method": "_goose/unstable/providers/authentication/device-code",
       "paramsType": "ProviderDeviceCodeNotification_unstable"
+    },
+    {
+      "method": "_goose/unstable/session/app-tools/cancel",
+      "paramsType": "CancelAppToolCallNotification_unstable"
     }
   ],
   "agentRequests": [

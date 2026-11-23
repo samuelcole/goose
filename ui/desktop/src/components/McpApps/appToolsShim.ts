@@ -11,6 +11,7 @@ const MAX_RESULT_TEXT_CHARS = 1_000_000;
 const SHIM_SOURCE = `(function (syncMethod, callMethod, maxResultChars) {
   var namePattern = /^[A-Za-z0-9_.-]{1,128}$/;
   var tools = new Map();
+  var inFlight = new Map();
   var syncScheduled = false;
 
   function post(message) {
@@ -100,7 +101,13 @@ const SHIM_SOURCE = `(function (syncMethod, callMethod, maxResultChars) {
   // for this shim never reach the app as unknown requests.
   window.addEventListener('message', function (event) {
     var message = event.data;
-    if (event.source !== window.parent || !message || message.method !== callMethod) return;
+    if (event.source !== window.parent || !message) return;
+    if (message.method === 'notifications/cancelled') {
+      var pending = message.params && inFlight.get(message.params.requestId);
+      if (pending) pending.abort(message.params.reason);
+      return;
+    }
+    if (message.method !== callMethod) return;
     event.stopImmediatePropagation();
     var params = message.params || {};
     function reply(result) { post({ id: message.id, result: result }); }
@@ -110,6 +117,7 @@ const SHIM_SOURCE = `(function (syncMethod, callMethod, maxResultChars) {
       return;
     }
     var controller = new AbortController();
+    inFlight.set(message.id, controller);
     Promise.resolve()
       .then(function () { return entry.execute(params.arguments || {}, { signal: controller.signal }); })
       .then(
@@ -117,7 +125,8 @@ const SHIM_SOURCE = `(function (syncMethod, callMethod, maxResultChars) {
         function (error) {
           reply({ text: String(error && error.message ? error.message : error).slice(0, 1024), isError: true });
         }
-      );
+      )
+      .finally(function () { inFlight.delete(message.id); });
   }, true);
 })`;
 
