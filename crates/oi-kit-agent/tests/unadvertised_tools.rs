@@ -202,3 +202,37 @@ async fn leaves_replies_alone_when_every_tool_was_offered() {
     assert_eq!(messages.len(), 1);
     assert!(tool_errors(&messages).is_empty());
 }
+
+#[tokio::test]
+async fn suggests_the_tool_whose_name_ends_the_same_way() {
+    let reply = Message::assistant()
+        .with_tool_request(
+            "guessed_prefix",
+            Ok(CallToolRequestParams::new("site__point_at")),
+        )
+        .with_tool_request("ambiguous", Ok(CallToolRequestParams::new("x__go")));
+
+    let messages = infer(
+        vec![Ok(reply)],
+        &["pages__site_point_at", "site__search", "a__go", "b__go"],
+    )
+    .await;
+
+    let available = "Available tools: [a__go, b__go, pages__site_point_at, site__search].";
+    assert_eq!(
+        tool_errors(&messages),
+        vec![
+            (
+                "guessed_prefix".to_string(),
+                format!(
+                    "Tool 'site__point_at' was not available in this request. \
+                     Did you mean 'pages__site_point_at'? {available}"
+                )
+            ),
+            (
+                "ambiguous".to_string(),
+                format!("Tool 'x__go' was not available in this request. {available}")
+            ),
+        ]
+    );
+}

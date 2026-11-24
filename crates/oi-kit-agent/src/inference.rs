@@ -248,17 +248,39 @@ fn unadvertised_tool_responses(
             continue;
         };
         if !tools.iter().any(|tool| tool.name == tool_call.name) {
+            let suggestion = suggest_tool(&tool_call.name, tools)
+                .map(|name| format!(" Did you mean '{name}'?"))
+                .unwrap_or_default();
             add_error_response(
                 &mut tool_responses,
                 request,
                 &format!(
-                    "Tool '{}' was not available in this request. Available tools: [{available_tools}].",
+                    "Tool '{}' was not available in this request.{suggestion} Available tools: [{available_tools}].",
                     tool_call.name
                 ),
             );
         }
     }
     (!tool_responses.content.is_empty()).then_some(tool_responses)
+}
+
+/// A model that guesses a tool's prefix, e.g. `site__point_at` for
+/// `pages__site_point_at`, usually has the right tool name after the prefix.
+fn suggest_tool<'a>(requested: &str, tools: &'a [rmcp::model::Tool]) -> Option<&'a str> {
+    let (_, name) = requested.rsplit_once("__")?;
+    if name.is_empty() {
+        return None;
+    }
+    let mut matches = tools
+        .iter()
+        .map(|tool| tool.name.as_ref())
+        .filter(|candidate| {
+            candidate
+                .strip_suffix(name)
+                .is_some_and(|prefix| prefix.ends_with('_'))
+        });
+    let first = matches.next()?;
+    matches.next().is_none().then_some(first)
 }
 
 #[derive(Default)]
