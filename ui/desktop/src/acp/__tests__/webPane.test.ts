@@ -7,8 +7,14 @@ const registerAppToolHandler = vi.fn(() => unregister);
 vi.mock('../appTools', () => ({ syncAppTools, registerAppToolHandler }));
 
 const register = vi.fn().mockResolvedValue(undefined);
+const setSiteServer = vi.fn().mockResolvedValue(undefined);
 vi.mock('../acpConnection', () => ({
-  getAcpClient: async () => ({ goose: { sessionWebPaneRegister_unstable: register } }),
+  getAcpClient: async () => ({
+    goose: {
+      sessionWebPaneRegister_unstable: register,
+      sessionWebPaneSiteServer_unstable: setSiteServer,
+    },
+  }),
   subscribeToAcpRecovery: () => () => {},
 }));
 
@@ -67,7 +73,7 @@ describe('web pane', () => {
       documentId: 'doc-1',
       tools: [{ name: 'go_to', description: 'Go to a passage' }],
     });
-    expect(syncAppTools).toHaveBeenLastCalledWith('s1', 'doc-1', 'tale.fyi', [
+    expect(syncAppTools).toHaveBeenLastCalledWith('s1', 'doc-1', 'tale.fyi page', [
       { name: 'go_to', description: 'Go to a passage' },
     ]);
     expect(registerAppToolHandler).toHaveBeenCalledWith('doc-1', expect.any(Object));
@@ -76,10 +82,51 @@ describe('web pane', () => {
     expect(syncAppTools).toHaveBeenCalledTimes(1);
 
     emit({ type: 'document', sessionId: 's1', documentId: 'doc-2', host: 'tale.fyi' });
-    expect(syncAppTools).toHaveBeenLastCalledWith('s1', 'doc-1', 'tale.fyi', []);
+    expect(syncAppTools).toHaveBeenLastCalledWith('s1', 'doc-1', 'tale.fyi page', []);
     expect(unregister).toHaveBeenCalledTimes(1);
 
     emit({ type: 'closed', sessionId: 's1' });
-    expect(syncAppTools).toHaveBeenLastCalledWith('s1', 'doc-2', 'tale.fyi', []);
+    expect(syncAppTools).toHaveBeenLastCalledWith('s1', 'doc-2', 'tale.fyi page', []);
+  });
+
+  it("adds the site's own MCP server while the pane stays on that site", async () => {
+    await webPane.registerWebPaneSession('s2');
+    const navigated = (url: string) =>
+      emit({ type: 'navigated', sessionId: 's2', url, title: '', canGoBack: false });
+    const server = (documentId: string) =>
+      emit({
+        type: 'mcpServer',
+        sessionId: 's2',
+        documentId,
+        url: 'https://tale.fyi/api/mcp',
+        title: 'tale.fyi',
+      });
+
+    const attached = {
+      sessionId: 's2',
+      url: 'https://tale.fyi/api/mcp',
+      title: 'tale.fyi',
+    };
+    const detached = { sessionId: 's2', url: undefined, title: '' };
+
+    emit({ type: 'document', sessionId: 's2', documentId: 'doc-1', host: 'tale.fyi' });
+    server('stale-doc');
+    server('doc-1');
+    await vi.waitFor(() => expect(setSiteServer).toHaveBeenCalledTimes(1));
+    expect(setSiteServer).toHaveBeenLastCalledWith(attached);
+
+    navigated('https://tale.fyi/dracula');
+    emit({ type: 'document', sessionId: 's2', documentId: 'doc-2', host: 'tale.fyi' });
+    server('doc-2');
+
+    navigated('https://example.com/');
+    await vi.waitFor(() => expect(setSiteServer).toHaveBeenCalledTimes(2));
+    expect(setSiteServer).toHaveBeenLastCalledWith(detached);
+
+    emit({ type: 'document', sessionId: 's2', documentId: 'doc-3', host: 'tale.fyi' });
+    server('doc-3');
+    emit({ type: 'closed', sessionId: 's2' });
+    await vi.waitFor(() => expect(setSiteServer).toHaveBeenCalledTimes(4));
+    expect(setSiteServer).toHaveBeenLastCalledWith(detached);
   });
 });

@@ -179,6 +179,7 @@ import type {
   SetSessionSystemPromptRequest_unstable,
   SetToolPermissionsRequest_unstable,
   SetToolPermissionsResponse_unstable,
+  SetWebPaneSiteServerRequest_unstable,
   SteerSessionRequest_unstable,
   SteerSessionResponse_unstable,
   SyncAppToolsRequest_unstable,
@@ -410,6 +411,15 @@ export class GooseExtClient {
   ): Promise<void> {
     await this.conn.request(
       "_goose/unstable/session/web-pane/register",
+      params,
+    );
+  }
+
+  async sessionWebPaneSiteServer_unstable(
+    params: SetWebPaneSiteServerRequest_unstable,
+  ): Promise<void> {
+    await this.conn.request(
+      "_goose/unstable/session/web-pane/site-server",
       params,
     );
   }

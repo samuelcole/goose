@@ -1,3 +1,4 @@
+/* global HTMLLinkElement */
 import { contextBridge, ipcRenderer, webFrame } from 'electron';
 import { WEB_PANE_BRIDGE_GLOBAL, webPaneShimSource } from './modelContextShim';
 
@@ -44,4 +45,16 @@ if (process.isMainFrame) {
 
   // Page scripts haven't run yet, so registerTool exists before they look for it.
   void webFrame.executeJavaScript(webPaneShimSource());
+
+  // A page can name its site's MCP server with <link rel="mcp-server">, which
+  // the agent can use alongside the page's own tools.
+  window.addEventListener('DOMContentLoaded', () => {
+    const link = document.querySelector<HTMLLinkElement>('link[rel~="mcp-server"][href]');
+    if (!link) return;
+    ipcRenderer.send('web-pane-page:mcp-server', documentId, {
+      url: link.href,
+      title: link.title,
+      transport: link.dataset.transport ?? '',
+    });
+  });
 }

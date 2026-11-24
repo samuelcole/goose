@@ -23,8 +23,12 @@ export interface WebPaneOriginPrompt {
 const ALLOWED_ORIGINS_KEY = 'goose.webPane.allowedOrigins';
 
 const panes = new Map<string, WebPaneState>();
-const documents = new Map<string, { documentId: string; host: string; unregister?: () => void }>();
+const documents = new Map<
+  string,
+  { documentId: string; host: string; unregister?: () => void; toolsSynced?: Promise<void> }
+>();
 const registeredSessions = new Set<string>();
+const siteServers = new Map<string, { origin: string; url: string; ready: Promise<void> }>();
 const listeners = new Set<() => void>();
 let originPrompt: WebPaneOriginPrompt | null = null;
 let wired = false;
@@ -98,9 +102,32 @@ function withdrawDocumentTools(sessionId: string): void {
   if (!current) return;
   documents.delete(sessionId);
   current.unregister?.();
-  syncAppTools(sessionId, current.documentId, current.host, []).catch((error: unknown) => {
-    console.error('[webPane] Failed to withdraw page tools:', error);
-  });
+  syncAppTools(sessionId, current.documentId, `${current.host} page`, []).catch(
+    (error: unknown) => {
+      console.error('[webPane] Failed to withdraw page tools:', error);
+    }
+  );
+}
+
+function setSiteServer(sessionId: string, url?: string, title = ''): Promise<void> {
+  return getAcpClient()
+    .then((client) => client.goose.sessionWebPaneSiteServer_unstable({ sessionId, url, title }))
+    .catch((error: unknown) => {
+      console.error('[webPane] Failed to update the site MCP server:', error);
+    });
+}
+
+function attachSiteServer(sessionId: string, url: string, title: string): void {
+  if (siteServers.get(sessionId)?.url === url) return;
+  const ready = setSiteServer(sessionId, url, title);
+  siteServers.set(sessionId, { origin: new URL(url).origin, url, ready });
+}
+
+// The site's server goes once the pane leaves the site, so it can't outlive the
+// person's view of that site.
+function detachSiteServer(sessionId: string): void {
+  if (!siteServers.delete(sessionId)) return;
+  void setSiteServer(sessionId);
 }
 
 function handleEvent(event: WebPaneEvent): void {
@@ -110,6 +137,9 @@ function handleEvent(event: WebPaneEvent): void {
       if (panes.has(sessionId)) {
         panes.set(sessionId, { url: event.url, title: event.title, canGoBack: event.canGoBack });
         notify();
+      }
+      if (siteServers.get(sessionId)?.origin !== new URL(event.url).origin) {
+        detachSiteServer(sessionId);
       }
       break;
     case 'document':
@@ -131,13 +161,23 @@ function handleEvent(event: WebPaneEvent): void {
               },
             })
           : undefined;
-      syncAppTools(sessionId, event.documentId, current.host, tools).catch((error: unknown) => {
+      current.toolsSynced = syncAppTools(
+        sessionId,
+        event.documentId,
+        `${current.host} page`,
+        tools
+      ).catch((error: unknown) => {
         console.error('[webPane] Failed to sync page tools:', error);
       });
       break;
     }
+    case 'mcpServer':
+      if (documents.get(sessionId)?.documentId !== event.documentId) return;
+      attachSiteServer(sessionId, event.url, event.title);
+      break;
     case 'closed':
       withdrawDocumentTools(sessionId);
+      detachSiteServer(sessionId);
       panes.delete(sessionId);
       notify();
       break;
@@ -182,7 +222,27 @@ export async function openWebPane(
     panes.set(request.sessionId, { url: request.url, title: '', canGoBack: false });
     notify();
   }
-  return window.electron.webPane.open(request.sessionId, request.url);
+  const page = await window.electron.webPane.open(request.sessionId, request.url);
+  await pageSettled(request.sessionId);
+  return page;
+}
+
+const PAGE_TOOLS_GRACE_MS = 1500;
+const PAGE_SETTLE_LIMIT_MS = 5000;
+
+// A loaded page registers its tools and names its site's server a moment later.
+// Waiting for them lets the agent's next step see them.
+async function pageSettled(sessionId: string): Promise<void> {
+  const deadline = Date.now() + PAGE_SETTLE_LIMIT_MS;
+  const graceEnd = Date.now() + PAGE_TOOLS_GRACE_MS;
+  while (!documents.get(sessionId)?.toolsSynced && Date.now() < graceEnd) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  const waits = [documents.get(sessionId)?.toolsSynced, siteServers.get(sessionId)?.ready];
+  await Promise.race([
+    Promise.all(waits),
+    new Promise((resolve) => setTimeout(resolve, Math.max(0, deadline - Date.now()))),
+  ]);
 }
 
 export async function closeWebPane(

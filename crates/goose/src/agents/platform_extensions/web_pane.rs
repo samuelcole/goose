@@ -1,3 +1,4 @@
+use crate::agents::app_tools::APP_TOOLS;
 use crate::agents::extension::PlatformExtensionContext;
 use crate::agents::platform_extensions::PlatformExtension;
 use crate::agents::tool_execution::ToolCallContext;
@@ -92,7 +93,8 @@ impl PlatformExtension for WebPaneClient {
                     .await
                     .map(|page| {
                         CallToolResult::success(vec![ContentBlock::text(
-                            json!({ "url": page.url, "title": page.title }).to_string(),
+                            opened_page_summary(&ctx.session_id, &page.url, &page.title)
+                                .to_string(),
                         )])
                     })
             }
@@ -108,4 +110,32 @@ impl PlatformExtension for WebPaneClient {
     fn get_info(&self) -> Option<&InitializeResult> {
         Some(&self.info)
     }
+}
+
+// Tools a page brings arrive while it loads, after this turn's tool list was
+// read, so the result names them for the agent.
+fn opened_page_summary(session_id: &str, url: &str, title: &str) -> serde_json::Value {
+    let namespace = url::Url::parse(url)
+        .ok()
+        .and_then(|url| url.host_str().map(|host| format!("{host} page")));
+    let page_tools: Vec<String> = APP_TOOLS
+        .list(session_id)
+        .into_iter()
+        .filter(|tool| Some(&tool.namespace) == namespace.as_ref())
+        .map(|tool| tool.exposed_name)
+        .collect();
+    let mut summary = json!({ "url": url, "title": title });
+    if !page_tools.is_empty() {
+        summary["pageTools"] = json!({
+            "about": "Tools this page offers; they act on the page the user is looking at.",
+            "names": page_tools,
+        });
+    }
+    if let Some(key) = WEB_PANES.site_server(session_id) {
+        summary["siteServer"] = json!({
+            "about": "The site's own MCP server, connected for this chat.",
+            "toolPrefix": format!("{key}__"),
+        });
+    }
+    summary
 }

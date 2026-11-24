@@ -7,14 +7,16 @@ use async_trait::async_trait;
 use goose_acp_types::custom_notifications::CancelAppToolCallNotification;
 use goose_acp_types::custom_requests::{
     AppToolCallResponse, EmptyResponse, RegisterWebPaneRequest, RequestAppToolCall,
-    RequestWebPaneClose, RequestWebPaneOpen, SyncAppToolsRequest, WebPaneOpenResponse,
-    REQUEST_APP_TOOL_CALL_METHOD, REQUEST_WEB_PANE_CLOSE_METHOD, REQUEST_WEB_PANE_OPEN_METHOD,
+    RequestWebPaneClose, RequestWebPaneOpen, SetWebPaneSiteServerRequest, SyncAppToolsRequest,
+    WebPaneOpenResponse, REQUEST_APP_TOOL_CALL_METHOD, REQUEST_WEB_PANE_CLOSE_METHOD,
+    REQUEST_WEB_PANE_OPEN_METHOD,
 };
 use tokio::sync::oneshot;
 
 use super::AcpConnection;
+use super::ResultExt;
 use crate::agents::app_tools::{AppToolCaller, APP_TOOLS};
-use crate::agents::web_pane::{WebPaneClient, WEB_PANES};
+use crate::agents::web_pane::{site_server_config, WebPaneClient, WEB_PANES};
 
 /// Defines typed wrappers for a goose agent → client request, so it can be sent
 /// with `ConnectionTo::send_request`.
@@ -181,7 +183,7 @@ impl AcpConnection {
                 req.tools,
                 Arc::new(ConnectionClient { cx: cx.clone() }),
             )
-            .map_err(|e| agent_client_protocol::Error::invalid_params().data(e.to_string()))?;
+            .invalid_params_err()?;
         Ok(EmptyResponse {})
     }
 
@@ -196,6 +198,43 @@ impl AcpConnection {
             &req.session_id,
             Arc::new(ConnectionClient { cx: cx.clone() }),
         );
+        Ok(EmptyResponse {})
+    }
+
+    pub(super) async fn on_set_web_pane_site_server(
+        &self,
+        req: SetWebPaneSiteServerRequest,
+    ) -> Result<EmptyResponse, agent_client_protocol::Error> {
+        self.require_session(&req.session_id)?;
+        let config = req
+            .url
+            .as_deref()
+            .map(|url| site_server_config(url, &req.title))
+            .transpose()
+            .map_err(|e| agent_client_protocol::Error::invalid_params().data(e.to_string()))?;
+        let key = config.as_ref().map(|config| config.key());
+        let previous = WEB_PANES.set_site_server(&req.session_id, key.clone());
+        if previous == key {
+            return Ok(EmptyResponse {});
+        }
+        self.open_session(&req.session_id).await?;
+        if let Some(previous) = previous {
+            self.services
+                .extension_manager
+                .disable(&req.session_id, &previous)
+                .await
+                .internal_err()?;
+        }
+        if let Some(config) = config {
+            if let Err(error) = self
+                .services
+                .enable_extension(&req.session_id, config)
+                .await
+            {
+                WEB_PANES.set_site_server(&req.session_id, None);
+                return Err(error).internal_err();
+            }
+        }
         Ok(EmptyResponse {})
     }
 }

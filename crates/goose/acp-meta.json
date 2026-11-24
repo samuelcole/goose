@@ -76,6 +76,11 @@
       "responseType": "EmptyResponse"
     },
     {
+      "method": "_goose/unstable/session/web-pane/site-server",
+      "requestType": "SetWebPaneSiteServerRequest_unstable",
+      "responseType": "EmptyResponse"
+    },
+    {
       "method": "_goose/unstable/session/app-tools/sync",
       "requestType": "SyncAppToolsRequest_unstable",
       "responseType": "EmptyResponse"

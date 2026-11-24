@@ -184,6 +184,7 @@ fn is_mergeable_assistant_chunk(message: &Message) -> bool {
 pub(crate) fn prepare_inference_tools(
     mut tools: Vec<Tool>,
     code_execution_active: bool,
+    session_id: &str,
 ) -> Vec<Tool> {
     #[cfg(feature = "code-mode")]
     if code_execution_active {
@@ -195,13 +196,14 @@ pub(crate) fn prepare_inference_tools(
                 || owner.is_some_and(|owner| {
                     crate::agents::platform_extensions::is_unprefixed_extension(&owner)
                         || crate::agents::platform_extensions::is_interactive_extension(&owner)
+                        || crate::agents::web_pane::WEB_PANES.is_site_server(session_id, &owner)
                 })
                 || crate::agents::extension_manager::get_tool_resource_uri(tool).is_some()
         });
     }
 
     #[cfg(not(feature = "code-mode"))]
-    let _ = code_execution_active;
+    let _ = (code_execution_active, session_id);
 
     // Filter out tools not visible to the model per MCP Apps visibility spec.
     // Tools with `_meta.ui.visibility` that doesn't include "model" are app-only.
@@ -1444,12 +1446,22 @@ mod tests {
         web_pane.name = "webpane__open".into();
         let mut page_tool =
             make_tool_with_meta(Some(serde_json::json!({"goose_extension": "apptools"})));
-        page_tool.name = "apptools__tale_fyi_play".into();
+        page_tool.name = "tale_fyi_page__play".into();
+        crate::agents::web_pane::WEB_PANES
+            .set_site_server("code-mode-test", Some("tale_fyi".to_string()));
+        let mut site_tool =
+            make_tool_with_meta(Some(serde_json::json!({"goose_extension": "tale_fyi"})));
+        site_tool.name = "tale_fyi__search_passages".into();
+        let mut other_session_site_tool =
+            make_tool_with_meta(Some(serde_json::json!({"goose_extension": "other_fyi"})));
+        other_session_site_tool.name = "other_fyi__search".into();
         let filtered = prepare_inference_tools(
             vec![
                 ordinary,
                 web_pane,
                 page_tool,
+                site_tool,
+                other_session_site_tool,
                 first_class,
                 resource,
                 hidden,
@@ -1457,6 +1469,7 @@ mod tests {
                 extension_final_output,
             ],
             true,
+            "code-mode-test",
         );
         let names = filtered
             .iter()
@@ -1465,10 +1478,11 @@ mod tests {
         assert_eq!(
             names,
             [
-                "apptools__tale_fyi_play",
                 FINAL_OUTPUT_TOOL_NAME,
                 "resource__view",
                 "shell",
+                "tale_fyi__search_passages",
+                "tale_fyi_page__play",
                 "webpane__open"
             ]
         );

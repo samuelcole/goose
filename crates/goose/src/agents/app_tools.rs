@@ -42,6 +42,8 @@ struct AppEntry {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExposedAppTool {
     pub exposed_name: String,
+    /// What the client called the page or app offering the tool, e.g. "tale.fyi page".
+    pub namespace: String,
     pub app_instance_id: String,
     pub descriptor: AppToolDescriptor,
 }
@@ -98,33 +100,34 @@ fn fold_to_tool_alphabet(value: &str) -> String {
 }
 
 // Provider tool names allow only [A-Za-z0-9_-] and are length-limited, so the
-// app's name and the tool's name are folded into that alphabet. When that is too
-// long (long hosts such as preview deployments), the app part is shortened rather
-// than the tool's, and a hash of the full pair keeps the result unique.
-fn exposed_name(extension_name: &str, tool_name: &str) -> String {
-    let full = fold_to_tool_alphabet(&format!("{extension_name}_{tool_name}"));
+// namespace (e.g. "tale.fyi page") and the tool's name are folded into that
+// alphabet as `namespace__tool`. When that is too long (long hosts such as
+// preview deployments), the namespace is shortened rather than the tool's name,
+// and a hash of the full pair keeps the result unique.
+fn exposed_name(namespace: &str, tool_name: &str) -> String {
+    let tool = fold_to_tool_alphabet(tool_name);
+    let full = format!("{}__{tool}", fold_to_tool_alphabet(namespace));
     if full.len() <= MAX_EXPOSED_NAME_LEN {
         return full;
     }
-    let hash: String = blake3::hash(format!("{extension_name}\0{tool_name}").as_bytes())
+    let hash: String = blake3::hash(format!("{namespace}\0{tool_name}").as_bytes())
         .to_hex()
         .chars()
         .take(6)
         .collect();
-    let tool = fold_to_tool_alphabet(tool_name);
-    let app_room = MAX_EXPOSED_NAME_LEN.saturating_sub(tool.len() + hash.len() + 2);
-    if app_room > 0 {
-        let app: String = fold_to_tool_alphabet(extension_name)
+    let namespace_room = MAX_EXPOSED_NAME_LEN.saturating_sub(tool.len() + hash.len() + 3);
+    if namespace_room > 0 {
+        let namespace: String = fold_to_tool_alphabet(namespace)
             .chars()
-            .take(app_room)
+            .take(namespace_room)
             .collect();
-        format!("{app}_{hash}_{tool}")
+        format!("{namespace}_{hash}__{tool}")
     } else {
         let tool: String = tool
             .chars()
-            .take(MAX_EXPOSED_NAME_LEN - hash.len() - 1)
+            .take(MAX_EXPOSED_NAME_LEN - hash.len() - 2)
             .collect();
-        format!("{hash}_{tool}")
+        format!("{hash}__{tool}")
     }
 }
 
@@ -191,6 +194,7 @@ impl AppToolsRegistry {
                 if seen.insert(name.clone()) {
                     exposed.push(ExposedAppTool {
                         exposed_name: name,
+                        namespace: entry.extension_name.clone(),
                         app_instance_id: instance_id.clone(),
                         descriptor: tool.clone(),
                     });
@@ -318,7 +322,7 @@ mod tests {
             .into_iter()
             .map(|t| t.exposed_name)
             .collect();
-        assert_eq!(names, vec!["tale_three"]);
+        assert_eq!(names, vec!["tale__three"]);
 
         sync(&registry, "a", vec![]);
         assert!(registry.list("s1").is_empty());
@@ -351,8 +355,8 @@ mod tests {
     #[test]
     fn exposed_names_fit_provider_rules() {
         assert_eq!(
-            exposed_name("tale", "reading.position"),
-            "tale_reading_position"
+            exposed_name("tale.fyi page", "reading.position"),
+            "tale_fyi_page__reading_position"
         );
         assert_eq!(
             exposed_name("tale", &"x".repeat(100)).len(),
@@ -375,7 +379,7 @@ mod tests {
         let names: Vec<_> = tools.iter().map(|tool| exposed_name(host, tool)).collect();
         for (name, tool) in names.iter().zip(tools) {
             assert!(name.len() <= MAX_EXPOSED_NAME_LEN, "{name}");
-            assert!(name.ends_with(&format!("_{tool}")), "{name}");
+            assert!(name.ends_with(&format!("__{tool}")), "{name}");
             assert!(name.starts_with("tale-git"), "{name}");
         }
         let unique: std::collections::HashSet<_> = names.iter().collect();
@@ -397,14 +401,14 @@ mod tests {
         assert_eq!(listed[0].app_instance_id, "new");
 
         let response = registry
-            .call("s1", "tale_position", None, CancellationToken::new())
+            .call("s1", "tale__position", None, CancellationToken::new())
             .await
             .unwrap();
         assert_eq!(response.text, "new:position");
 
         sync(&registry, "new", vec![]);
         let response = registry
-            .call("s1", "tale_position", None, CancellationToken::new())
+            .call("s1", "tale__position", None, CancellationToken::new())
             .await
             .unwrap();
         assert_eq!(response.text, "old:position");
@@ -423,7 +427,7 @@ mod tests {
             .into_iter()
             .map(|t| t.exposed_name)
             .collect();
-        assert_eq!(names, vec!["tale_chapters"]);
+        assert_eq!(names, vec!["tale__chapters"]);
     }
 
     #[tokio::test]
@@ -437,7 +441,7 @@ mod tests {
         cancel.cancel();
 
         let error = registry
-            .call("s1", "tale_position", None, cancel)
+            .call("s1", "tale__position", None, cancel)
             .await
             .unwrap_err();
 
@@ -449,7 +453,7 @@ mod tests {
     async fn calling_a_withdrawn_tool_fails() {
         let registry = AppToolsRegistry::default();
         let error = registry
-            .call("s1", "tale_position", None, CancellationToken::new())
+            .call("s1", "tale__position", None, CancellationToken::new())
             .await
             .unwrap_err();
         assert!(error.to_string().contains("no longer available"));

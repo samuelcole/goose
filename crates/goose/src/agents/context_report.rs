@@ -152,8 +152,11 @@ impl StateMachineServices {
             self.tool_inspection_manager
                 .apply_tool_annotations(&input.tools);
         }
-        let tools =
-            crate::agents::reply_parts::prepare_inference_tools(input.tools, code_execution_active);
+        let tools = crate::agents::reply_parts::prepare_inference_tools(
+            input.tools,
+            code_execution_active,
+            &session.id,
+        );
         let prompt = PromptManager::new().build_system_prompt_parts(
             &session,
             input.prompt_parts,

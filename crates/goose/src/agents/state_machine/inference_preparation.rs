@@ -55,8 +55,11 @@ impl InferenceRequestPreparer<Session> for GooseInferenceRequestPreparer<'_> {
             self.tool_inspection_manager
                 .apply_tool_annotations(&input.tools);
         }
-        let tools =
-            crate::agents::reply_parts::prepare_inference_tools(input.tools, code_execution_mode);
+        let tools = crate::agents::reply_parts::prepare_inference_tools(
+            input.tools,
+            code_execution_mode,
+            &session.id,
+        );
         let system_prompt =
             PromptManager::new().build_system_prompt(session, input.prompt_parts, goose_mode)?;
         let turn = messages_since_kickoff(conversation)?;

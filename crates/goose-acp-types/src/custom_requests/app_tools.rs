@@ -95,3 +95,21 @@ pub struct WebPaneOpenResponse {
 pub struct RequestWebPaneClose {
     pub session_id: String,
 }
+
+/// Set or clear the MCP server of the site open in a chat's web pane, which a
+/// page names with `<link rel="mcp-server">`. Its tools are offered while the
+/// pane stays on that site.
+#[derive(Debug, Default, Clone, Serialize, Deserialize, JsonSchema, JsonRpcRequest)]
+#[request(
+    method = "_goose/unstable/session/web-pane/site-server",
+    response = EmptyResponse
+)]
+#[serde(rename_all = "camelCase")]
+pub struct SetWebPaneSiteServerRequest {
+    pub session_id: String,
+    /// The server's streamable HTTP URL, or none to drop the current one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    #[serde(default)]
+    pub title: String,
+}

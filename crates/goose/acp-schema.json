@@ -1358,6 +1358,31 @@
       "x-side": "agent",
       "x-method": "_goose/unstable/session/web-pane/register"
     },
+    "SetWebPaneSiteServerRequest_unstable": {
+      "type": "object",
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        },
+        "url": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "The server's streamable HTTP URL, or none to drop the current one."
+        },
+        "title": {
+          "type": "string",
+          "default": ""
+        }
+      },
+      "required": [
+        "sessionId"
+      ],
+      "description": "Set or clear the MCP server of the site open in a chat's web pane, which a\npage names with `<link rel=\"mcp-server\">`. Its tools are offered while the\npane stays on that site.",
+      "x-side": "agent",
+      "x-method": "_goose/unstable/session/web-pane/site-server"
+    },
     "SyncAppToolsRequest_unstable": {
       "type": "object",
       "properties": {
@@ -7564,6 +7589,15 @@
                   ],
                   "description": "Params for _goose/unstable/session/web-pane/register",
                   "title": "RegisterWebPaneRequest_unstable"
+                },
+                {
+                  "allOf": [
+                    {
+                      "$ref": "#/$defs/SetWebPaneSiteServerRequest_unstable"
+                    }
+                  ],
+                  "description": "Params for _goose/unstable/session/web-pane/site-server",
+                  "title": "SetWebPaneSiteServerRequest_unstable"
                 },
                 {
                   "allOf": [

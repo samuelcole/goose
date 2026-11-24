@@ -194,9 +194,10 @@ pub static PLATFORM_EXTENSIONS: Lazy<HashMap<&'static str, PlatformExtensionDef>
             PlatformExtensionDef {
                 name: app_tools::EXTENSION_NAME,
                 display_name: "App Tools",
-                description: "Tools registered by MCP App UIs open in the chat",
+                description: "Tools offered by the pages and apps open in the chat",
                 default_enabled: true,
-                unprefixed_tools: false,
+                // Tools are already named by the page or app that offers them.
+                unprefixed_tools: true,
                 hidden: false,
                 client_factory: |ctx| Some(Box::new(app_tools::AppToolsClient::new(ctx).unwrap())),
             },

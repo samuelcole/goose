@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 
+use crate::agents::extension::{ExtensionConfig, DEFAULT_EXTENSION_TIMEOUT};
 use anyhow::{anyhow, bail, Result};
 use async_trait::async_trait;
 use goose_acp_types::custom_requests::WebPaneOpenResponse;
@@ -27,9 +28,34 @@ struct Registration {
 #[derive(Default)]
 pub struct WebPaneRegistry {
     sessions: Mutex<HashMap<String, Registration>>,
+    /// The extension key of the MCP server of the site open in each chat's pane.
+    site_servers: Mutex<HashMap<String, String>>,
 }
 
 pub static WEB_PANES: LazyLock<WebPaneRegistry> = LazyLock::new(WebPaneRegistry::default);
+
+/// The extension for a site's own MCP server, named after its host.
+pub fn site_server_config(url: &str, title: &str) -> Result<ExtensionConfig> {
+    let url = validate_url(url)?;
+    let host = url
+        .host_str()
+        .ok_or_else(|| anyhow!("the server URL has no host"))?
+        .to_string();
+    let label = match title.trim() {
+        "" => host.as_str(),
+        title => title,
+    };
+    let description = format!(
+        "{label}: the MCP server of {}, the site open in the web pane.",
+        url.origin().ascii_serialization()
+    );
+    Ok(ExtensionConfig::streamable_http(
+        host.clone(),
+        url.to_string(),
+        description,
+        DEFAULT_EXTENSION_TIMEOUT,
+    ))
+}
 
 pub fn validate_url(url: &str) -> Result<url::Url> {
     let parsed = url::Url::parse(url).map_err(|e| anyhow!("invalid URL: {e}"))?;
@@ -58,6 +84,34 @@ impl WebPaneRegistry {
             .lock()
             .expect("web pane registry poisoned")
             .retain(|_, registration| registration.connection_id != connection_id);
+    }
+
+    /// Records the chat's site server, returning the one it replaces.
+    pub fn set_site_server(&self, session_id: &str, key: Option<String>) -> Option<String> {
+        let mut servers = self
+            .site_servers
+            .lock()
+            .expect("web pane registry poisoned");
+        match key {
+            Some(key) => servers.insert(session_id.to_string(), key),
+            None => servers.remove(session_id),
+        }
+    }
+
+    pub fn site_server(&self, session_id: &str) -> Option<String> {
+        self.site_servers
+            .lock()
+            .expect("web pane registry poisoned")
+            .get(session_id)
+            .cloned()
+    }
+
+    pub fn is_site_server(&self, session_id: &str, extension_key: &str) -> bool {
+        self.site_servers
+            .lock()
+            .expect("web pane registry poisoned")
+            .get(session_id)
+            .is_some_and(|key| key == extension_key)
     }
 
     pub fn is_available(&self, session_id: &str) -> bool {
@@ -118,6 +172,23 @@ mod tests {
         async fn close(&self, _session_id: &str) -> Result<()> {
             Ok(())
         }
+    }
+
+    #[test]
+    fn site_server_is_named_after_its_host() {
+        let config = site_server_config("https://tale.fyi/api/mcp", "tale.fyi").unwrap();
+        assert_eq!(config.key(), "tale_fyi");
+        assert!(site_server_config("file:///tmp/mcp", "").is_err());
+
+        let registry = WebPaneRegistry::default();
+        assert_eq!(registry.set_site_server("s1", Some(config.key())), None);
+        assert!(registry.is_site_server("s1", "tale_fyi"));
+        assert!(!registry.is_site_server("s2", "tale_fyi"));
+        assert_eq!(
+            registry.set_site_server("s1", None),
+            Some("tale_fyi".to_string())
+        );
+        assert!(!registry.is_site_server("s1", "tale_fyi"));
     }
 
     #[test]

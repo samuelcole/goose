@@ -27,6 +27,7 @@ export type WebPaneEvent =
   | { type: 'navigated'; sessionId: string; url: string; title: string; canGoBack: boolean }
   | { type: 'document'; sessionId: string; documentId: string; host: string }
   | { type: 'tools'; sessionId: string; documentId: string; tools: unknown }
+  | { type: 'mcpServer'; sessionId: string; documentId: string; url: string; title: string }
   | { type: 'closed'; sessionId: string };
 
 export interface WebPaneToolResult {
@@ -253,6 +254,26 @@ export function registerWebPaneIpc(): void {
     if (!pane || pane.documentId !== documentId) return;
     emit(pane, { type: 'tools', sessionId: pane.sessionId, documentId, tools });
   });
+
+  // Only a server on the page's own origin, reached over streamable HTTP: a page
+  // can't point the agent at another site.
+  ipcMain.on(
+    'web-pane-page:mcp-server',
+    (event, documentId: string, link: { url: unknown; title: unknown; transport: unknown }) => {
+      const pane = panesByPageId.get(event.sender.id);
+      if (!pane || pane.documentId !== documentId) return;
+      if (typeof link.url !== 'string' || !isWebUrl(link.url)) return;
+      if (link.transport !== '' && link.transport !== 'streamable-http') return;
+      if (new URL(link.url).origin !== new URL(event.sender.getURL()).origin) return;
+      emit(pane, {
+        type: 'mcpServer',
+        sessionId: pane.sessionId,
+        documentId,
+        url: link.url,
+        title: typeof link.title === 'string' ? link.title.slice(0, 200) : '',
+      });
+    }
+  );
 
   ipcMain.on('web-pane-page:call-result', (event, callId: string, result: WebPaneToolResult) => {
     const pane = panesByPageId.get(event.sender.id);

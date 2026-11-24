@@ -927,7 +927,7 @@ export default function McpAppRenderer({
       if (callTool && tools.length > 0) {
         appToolUnregistersRef.current.set(documentId, registerAppToolHandler(documentId, callTool));
       }
-      syncAppTools(sessionId, documentId, extensionName, tools).catch((error: unknown) => {
+      syncAppTools(sessionId, documentId, `${extensionName} app`, tools).catch((error: unknown) => {
         console.error('[McpAppRenderer] Failed to sync app tools:', error);
       });
     },

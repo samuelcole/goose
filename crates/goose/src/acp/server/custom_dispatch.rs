@@ -151,6 +151,14 @@ impl AcpConnection {
         self.on_register_web_pane(cx, req).await
     }
 
+    #[custom_method(SetWebPaneSiteServerRequest)]
+    async fn dispatch_set_web_pane_site_server(
+        self: &Arc<Self>,
+        req: SetWebPaneSiteServerRequest,
+    ) -> Result<EmptyResponse, agent_client_protocol::Error> {
+        self.on_set_web_pane_site_server(req).await
+    }
+
     #[custom_method(SyncAppToolsRequest)]
     async fn dispatch_sync_app_tools(
         self: &Arc<Self>,

@@ -447,6 +447,17 @@ export const zRegisterWebPaneRequest_unstable = z.object({
 });
 
 /**
+ * Set or clear the MCP server of the site open in a chat's web pane, which a
+ * page names with `<link rel="mcp-server">`. Its tools are offered while the
+ * pane stays on that site.
+ */
+export const zSetWebPaneSiteServerRequest_unstable = z.object({
+    sessionId: z.string(),
+    url: z.string().nullish(),
+    title: z.string().optional().default('')
+});
+
+/**
  * A tool an MCP App fragment registered with WebMCP's `registerTool`.
  */
 export const zAppToolDescriptor = z.object({
@@ -2451,6 +2462,7 @@ export const zExtRequest = z.object({
             zSteerSessionRequest_unstable,
             zLiveVoiceAvailabilityRequest_unstable,
             zRegisterWebPaneRequest_unstable,
+            zSetWebPaneSiteServerRequest_unstable,
             zSyncAppToolsRequest_unstable,
             zLiveVoiceStartRequest_unstable,
             zLiveVoiceStopRequest_unstable,
