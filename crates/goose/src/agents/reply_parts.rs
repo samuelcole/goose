@@ -194,6 +194,7 @@ pub(crate) fn prepare_inference_tools(
                     || tool.name == oi_kit_agent::skills::LOAD_SKILL_TOOL_NAME))
                 || owner.is_some_and(|owner| {
                     crate::agents::platform_extensions::is_unprefixed_extension(&owner)
+                        || crate::agents::platform_extensions::is_interactive_extension(&owner)
                 })
                 || crate::agents::extension_manager::get_tool_resource_uri(tool).is_some()
         });
@@ -1438,9 +1439,17 @@ mod tests {
         let hidden = make_tool_with_meta(Some(
             serde_json::json!({"goose_extension": "developer", "ui": {"visibility": ["app"]}}),
         ));
+        let mut web_pane =
+            make_tool_with_meta(Some(serde_json::json!({"goose_extension": "webpane"})));
+        web_pane.name = "webpane__open".into();
+        let mut page_tool =
+            make_tool_with_meta(Some(serde_json::json!({"goose_extension": "apptools"})));
+        page_tool.name = "apptools__tale_fyi_play".into();
         let filtered = prepare_inference_tools(
             vec![
                 ordinary,
+                web_pane,
+                page_tool,
                 first_class,
                 resource,
                 hidden,
@@ -1453,7 +1462,16 @@ mod tests {
             .iter()
             .map(|tool| tool.name.as_ref())
             .collect::<Vec<_>>();
-        assert_eq!(names, [FINAL_OUTPUT_TOOL_NAME, "resource__view", "shell"]);
+        assert_eq!(
+            names,
+            [
+                "apptools__tale_fyi_play",
+                FINAL_OUTPUT_TOOL_NAME,
+                "resource__view",
+                "shell",
+                "webpane__open"
+            ]
+        );
     }
 }
 

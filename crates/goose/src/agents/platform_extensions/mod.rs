@@ -332,6 +332,13 @@ pub fn is_unprefixed_extension(name: &str) -> bool {
         .is_some_and(|def| def.unprefixed_tools)
 }
 
+/// Tools that drive what the user is looking at, a web pane or a page inside
+/// it, stay direct during code execution mode, like MCP App tools that show UI.
+pub fn is_interactive_extension(name: &str) -> bool {
+    let key = crate::config::extensions::name_to_key(name);
+    key == web_pane::EXTENSION_NAME || key == app_tools::EXTENSION_NAME
+}
+
 pub fn is_hidden_extension(name: &str) -> bool {
     PLATFORM_EXTENSIONS
         .get(crate::config::extensions::name_to_key(name).as_str())
