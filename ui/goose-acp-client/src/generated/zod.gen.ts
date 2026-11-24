@@ -2432,7 +2432,8 @@ export const zRequestWebPaneOpen_unstable = z.object({
 
 export const zWebPaneOpenResponse_unstable = z.object({
     url: z.string(),
-    title: z.string().optional().default('')
+    title: z.string().optional().default(''),
+    status: z.int().gte(0).lte(65535).nullish()
 });
 
 /**

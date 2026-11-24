@@ -166,6 +166,7 @@ mod tests {
             Ok(WebPaneOpenResponse {
                 url: url.to_string(),
                 title: "Page".to_string(),
+                status: Some(200),
             })
         }
 

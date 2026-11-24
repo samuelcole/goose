@@ -5,6 +5,7 @@ use crate::agents::tool_execution::ToolCallContext;
 use crate::agents::web_pane::WEB_PANES;
 use anyhow::Result;
 use async_trait::async_trait;
+use goose_acp_types::custom_requests::WebPaneOpenResponse;
 use oi_kit_agent::mcp::client::Error;
 use rmcp::model::{
     CallToolResult, ContentBlock, Implementation, InitializeResult, JsonObject, ServerCapabilities,
@@ -93,8 +94,7 @@ impl PlatformExtension for WebPaneClient {
                     .await
                     .map(|page| {
                         CallToolResult::success(vec![ContentBlock::text(
-                            opened_page_summary(&ctx.session_id, &page.url, &page.title)
-                                .to_string(),
+                            opened_page_summary(&ctx.session_id, &page).to_string(),
                         )])
                     })
             }
@@ -114,8 +114,8 @@ impl PlatformExtension for WebPaneClient {
 
 // Tools a page brings arrive while it loads, after this turn's tool list was
 // read, so the result names them for the agent.
-fn opened_page_summary(session_id: &str, url: &str, title: &str) -> serde_json::Value {
-    let namespace = url::Url::parse(url)
+fn opened_page_summary(session_id: &str, page: &WebPaneOpenResponse) -> serde_json::Value {
+    let namespace = url::Url::parse(&page.url)
         .ok()
         .and_then(|url| url.host_str().map(|host| format!("{host} page")));
     let page_tools: Vec<String> = APP_TOOLS
@@ -124,7 +124,16 @@ fn opened_page_summary(session_id: &str, url: &str, title: &str) -> serde_json::
         .filter(|tool| Some(&tool.namespace) == namespace.as_ref())
         .map(|tool| tool.exposed_name)
         .collect();
-    let mut summary = json!({ "url": url, "title": title });
+    let mut summary = json!({ "url": page.url, "title": page.title });
+    if let Some(status) = page.status {
+        summary["status"] = json!(status);
+        if status >= 400 {
+            summary["note"] = json!(format!(
+                "The site answered HTTP {status}, so this URL is probably wrong. Open the \
+                 site's home page or use its search rather than guessing another path."
+            ));
+        }
+    }
     if !page_tools.is_empty() {
         summary["pageTools"] = json!({
             "about": "Tools this page offers; they act on the page the user is looking at.",
@@ -138,4 +147,32 @@ fn opened_page_summary(session_id: &str, url: &str, title: &str) -> serde_json::
         });
     }
     summary
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn page(status: Option<u16>) -> WebPaneOpenResponse {
+        WebPaneOpenResponse {
+            url: "https://tale.fyi/book/dracula".to_string(),
+            title: "tale.fyi".to_string(),
+            status,
+        }
+    }
+
+    #[test]
+    fn an_error_status_warns_that_the_url_is_probably_wrong() {
+        let summary = opened_page_summary("summary-test", &page(Some(404)));
+        assert_eq!(summary["status"], 404);
+        assert!(summary["note"].as_str().unwrap().contains("HTTP 404"));
+
+        let summary = opened_page_summary("summary-test", &page(Some(200)));
+        assert_eq!(summary["status"], 200);
+        assert!(summary.get("note").is_none());
+
+        assert!(opened_page_summary("summary-test", &page(None))
+            .get("status")
+            .is_none());
+    }
 }

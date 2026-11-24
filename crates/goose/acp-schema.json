@@ -7421,6 +7421,15 @@
         "title": {
           "type": "string",
           "default": ""
+        },
+        "status": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "description": "HTTP status of the page's main document, when the client knows it.",
+          "minimum": 0,
+          "maximum": 65535
         }
       },
       "required": [

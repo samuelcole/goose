@@ -2937,6 +2937,10 @@ export type WebPaneOpenResponse_unstable = {
      */
     url: string;
     title?: string;
+    /**
+     * HTTP status of the page's main document, when the client knows it.
+     */
+    status?: number | null;
 };
 
 /**

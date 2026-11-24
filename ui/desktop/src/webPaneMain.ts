@@ -41,6 +41,8 @@ interface Pane {
   owner: WebContents;
   sessionId: string;
   documentId: string | null;
+  // HTTP status of the last main-frame document, e.g. 404 for a guessed URL.
+  httpStatus?: number;
   pendingCalls: Map<string, (result: WebPaneToolResult) => void>;
 }
 
@@ -145,7 +147,10 @@ function createPane(owner: WebContents, sessionId: string): Pane {
   page.on('will-navigate', (event, url) => {
     if (!isWebUrl(url)) event.preventDefault();
   });
-  page.on('did-navigate', () => emitNavigated(pane));
+  page.on('did-navigate', (_event, _url, httpResponseCode) => {
+    pane.httpStatus = httpResponseCode > 0 ? httpResponseCode : undefined;
+    emitNavigated(pane);
+  });
   page.on('did-navigate-in-page', (_event, _url, isMainFrame) => {
     if (isMainFrame) emitNavigated(pane);
   });
@@ -178,7 +183,11 @@ export function registerWebPaneIpc(): void {
     }
     const pane = paneFor(event, sessionId) ?? createPane(event.sender, sessionId);
     await pane.view.webContents.loadURL(url);
-    return { url: pane.view.webContents.getURL(), title: pane.view.webContents.getTitle() };
+    return {
+      url: pane.view.webContents.getURL(),
+      title: pane.view.webContents.getTitle(),
+      status: pane.httpStatus,
+    };
   });
 
   ipcMain.handle('web-pane:close', (event, sessionId: string) => {

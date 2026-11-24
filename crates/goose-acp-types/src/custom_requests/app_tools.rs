@@ -87,6 +87,9 @@ pub struct WebPaneOpenResponse {
     pub url: String,
     #[serde(default)]
     pub title: String,
+    /// HTTP status of the page's main document, when the client knows it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<u16>,
 }
 
 /// Ask the client to close the chat's web pane.

@@ -161,7 +161,10 @@ type ElectronAPI = {
   }) => void;
   openExternal: (url: string) => Promise<OpenExternalUrlResult>;
   webPane: {
-    open: (sessionId: string, url: string) => Promise<{ url: string; title: string }>;
+    open: (
+      sessionId: string,
+      url: string
+    ) => Promise<{ url: string; title: string; status?: number }>;
     close: (sessionId: string) => Promise<void>;
     setBounds: (sessionId: string, bounds: WebPaneBounds | null) => Promise<void>;
     navigate: (sessionId: string, action: 'back' | 'forward' | 'reload') => Promise<void>;
