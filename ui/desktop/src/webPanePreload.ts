@@ -47,9 +47,12 @@ if (process.isMainFrame) {
   void webFrame.executeJavaScript(webPaneShimSource());
 
   // A page can name its site's MCP server with <link rel="mcp-server">, which
-  // the agent can use alongside the page's own tools.
+  // the agent can use alongside the page's own tools. rel="mcp" is accepted too,
+  // matching Harbor, since no name is registered yet.
   window.addEventListener('DOMContentLoaded', () => {
-    const link = document.querySelector<HTMLLinkElement>('link[rel~="mcp-server"][href]');
+    const link = document.querySelector<HTMLLinkElement>(
+      'link[rel~="mcp-server"][href], link[rel~="mcp"][href]'
+    );
     if (!link) return;
     ipcRenderer.send('web-pane-page:mcp-server', documentId, {
       url: link.href,
