@@ -121,6 +121,9 @@ function createPane(owner: WebContents, sessionId: string): Pane {
       sandbox: true,
       nodeIntegration: false,
       autoplayPolicy: 'no-user-gesture-required',
+      // A pane can be something you listen to, like narration, while goose sits
+      // behind other windows, so the page keeps running as if it were visible.
+      backgroundThrottling: false,
     },
   });
   view.setVisible(false);
